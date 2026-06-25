@@ -45,6 +45,11 @@ classDiagram
         Poison
         Lightning
         Magic
+        Water
+        Wind
+        Earth
+        Light
+        Dark
     }
     class EModifierOp {
         <<enumeration>>
@@ -65,6 +70,29 @@ classDiagram
         Snow
         Storm
         Fog
+    }
+    class EAbilityDelivery {
+        <<enumeration>>
+        SelfCast
+        Melee
+        Projectile
+        AreaOfEffect
+        Beam
+    }
+    class EEntityTier {
+        <<enumeration>>
+        Normal
+        Elite
+        MiniBoss
+        Boss
+    }
+    class EAIBehaviorProfile {
+        <<enumeration>>
+        Passive
+        Neutral
+        Aggressive
+        Territorial
+        Pack
     }
 
     %% ====== PATTERN D'HÉRITAGE GÉNÉRALISÉ ======
@@ -270,17 +298,21 @@ classDiagram
         +AbilityName : FName
         +ParentAbility : UAbilityDefinition*
         +Category : EAbilityCategory
+        +Element : EDamageClass
+        +DeliveryMethod : EAbilityDelivery
         +RequiredBodyParts : TArray~BodyPartType~
         +RequiredMorphology : TArray~FName~
-        +StaminaCost : float
+        +ResourceCosts : TMap~FName, float~
         +Cooldown : float
         +Animation : UAnimMontage*
-        +TargetEffect : UStatusEffect*
+        +Effects : TArray~UAbilityEffect*~
         +CanActivate(ALivingEntity*) bool
         +GetEffectiveDefinition() UAbilityDefinition*
     }
     UAbilityDefinition --> UAbilityDefinition : ParentAbility
     UAbilityDefinition ..|> IInheritableDefinition
+    UAbilityDefinition --> EDamageClass : Element
+    UAbilityDefinition --> EAbilityDelivery : DeliveryMethod
     class UAbilityInstance {
         +Definition : UAbilityDefinition*
         +Owner : ALivingEntity*
@@ -296,6 +328,65 @@ classDiagram
         +ActivateAbility(FName)
         +CanActivateAbility(FName) bool
     }
+
+    %% ====== EFFETS DE CAPACITE (payload polymorphe : magie) ======
+    %% Polymorphisme via ApplyEffect(). Reutilise FDamageEvent / ITakeDamage /
+    %% UStatusEffect / URaceData / ASpawnManager existants (zero doublon).
+    class FAbilityContext {
+        +Instigator : ALivingEntity*
+        +Target : AActor*
+        +ImpactPoint : FVector
+        +Ability : UAbilityDefinition*
+    }
+    class UAbilityEffect {
+        <<abstract>>
+        +ApplyEffect(FAbilityContext Context)
+    }
+    class UDamageEffect {
+        +DamageType : UDamageType*
+        +Element : EDamageClass
+        +Amount : float
+    }
+    class UHealEffect {
+        +HealAmount : float
+        +TargetAttribute : FName
+    }
+    class UStatusApplyEffect {
+        +Effect : UStatusEffect*
+    }
+    class USummonEffect {
+        +SummonRace : URaceData*
+        +Count : int
+        +Duration : float
+    }
+    class UTeleportEffect {
+        +MaxDistance : float
+    }
+    UAbilityEffect <|-- UDamageEffect
+    UAbilityEffect <|-- UHealEffect
+    UAbilityEffect <|-- UStatusApplyEffect
+    UAbilityEffect <|-- USummonEffect
+    UAbilityEffect <|-- UTeleportEffect
+    UAbilityEffect ..> FAbilityContext
+    UAbilityDefinition o-- UAbilityEffect : Effects
+    UDamageEffect ..> FDamageEvent : genere
+    UDamageEffect ..> ITakeDamage : applique
+    UStatusApplyEffect --> UStatusEffect
+    USummonEffect --> URaceData
+    USummonEffect ..> ASpawnManager : SpawnEntity()
+
+    %% ====== PROJECTILE / SORT A DISTANCE & AoE ======
+    class AAbilityProjectile {
+        +SourceAbility : UAbilityDefinition*
+        +Instigator : ALivingEntity*
+        +Effects : TArray~UAbilityEffect*~
+        +Velocity : FVector
+        +Radius : float
+        +OnHit(AActor* HitActor)
+    }
+    AAbilityProjectile o-- UAbilityEffect : Effects
+    AAbilityProjectile --> UAbilityDefinition : SourceAbility
+    AAbilityProjectile ..> ITakeDamage : OnHit
 
     %% ====== OBJETS (hiérarchie + données héritables) ======
     class UItemBase {
@@ -440,9 +531,54 @@ classDiagram
         +CurrentXP : int
         +CurrentLevel : int
         +LevelThresholds : TArray~int~
+        +SkillPoints : int
         +AddXP(int)
         +GetLevel() int
+        +GrantSkillPoints(int)
     }
+
+    %% ====== CLASSES / JOBS / ARBRE DE COMPETENCES (isekai) ======
+    %% Reutilise UAbilityDefinition + FAttributeModifier existants.
+    %% UClassDefinition suit le pattern d'heritage (ParentClass + GetEffective).
+    class UClassDefinition {
+        +ClassName : FName
+        +ParentClass : UClassDefinition*
+        +GrantedAbilities : TArray~UAbilityDefinition*~
+        +BaseModifiers : TArray~FAttributeModifier~
+        +SkillTree : USkillTree*
+        +GetEffectiveAbilities() TArray~UAbilityDefinition*~
+    }
+    UClassDefinition --> UClassDefinition : ParentClass
+    UClassDefinition ..|> IInheritableDefinition
+    class FSkillNode {
+        +NodeID : FName
+        +GrantedAbility : UAbilityDefinition*
+        +GrantedModifiers : TArray~FAttributeModifier~
+        +Prerequisites : TArray~FName~
+        +Cost : int
+        +RequiredLevel : int
+    }
+    class USkillTree {
+        +TreeName : FName
+        +Nodes : TArray~FSkillNode~
+    }
+    class UClassComponent {
+        +OwningEntity : ALivingEntity*
+        +CurrentClass : UClassDefinition*
+        +UnlockedNodes : TArray~FName~
+        +CanUnlock(FName NodeID) bool
+        +UnlockNode(FName NodeID) bool
+        +ChangeClass(UClassDefinition*)
+    }
+    UClassDefinition --> USkillTree : SkillTree
+    UClassDefinition o-- FAttributeModifier : BaseModifiers
+    UClassDefinition --> UAbilityDefinition : GrantedAbilities
+    USkillTree o-- FSkillNode
+    FSkillNode --> UAbilityDefinition : GrantedAbility
+    FSkillNode o-- FAttributeModifier : GrantedModifiers
+    UClassComponent --> UClassDefinition : CurrentClass
+    UClassComponent ..> UProgressionComponent : consomme SkillPoints
+    UClassComponent ..> UAbilityComponent : octroie capacites
 
     %% ====== PERCEPTION (IA) ======
     class UPerceptionComponent {
@@ -455,6 +591,55 @@ classDiagram
         +CanSee(AActor*) bool
         +GetBestTarget() ALivingEntity*
     }
+
+    %% ====== MENACE / AGRO (IA hostile) ======
+    %% Reutilise UPerceptionComponent (detection) + UFactionData (relations).
+    %% N'ajoute QUE l'etat de ciblage/menace, absent jusqu'ici.
+    class UThreatComponent {
+        +OwningEntity : ALivingEntity*
+        +AggroRadius : float
+        +CurrentTarget : ALivingEntity*
+        +ThreatTable : TMap~ALivingEntity*, float~
+        +AddThreat(ALivingEntity*, float)
+        +GetHighestThreat() ALivingEntity*
+        +OnDamaged(ALivingEntity* Attacker, float Amount)
+    }
+    UThreatComponent ..> UPerceptionComponent : candidats
+    UThreatComponent ..> UFactionData : filtre ennemis
+
+    %% ====== BOSS / RENCONTRES (comportement composable) ======
+    %% Se greffe sur N'IMPORTE QUELLE morphologie. Loot via ULootTable de la race.
+    class FBossPhase {
+        +PhaseName : FName
+        +HealthThreshold : float
+        +GrantedAbilities : TArray~UAbilityDefinition*~
+        +PhaseEffects : TArray~UStatusEffect*~
+        +EnrageTimer : float
+    }
+    class UBossComponent {
+        +OwningEntity : ALivingEntity*
+        +Phases : TArray~FBossPhase~
+        +CurrentPhase : int
+        +OnHealthThreshold(float Percent)
+    }
+    UBossComponent o-- FBossPhase
+    FBossPhase --> UAbilityDefinition : GrantedAbilities
+    FBossPhase --> UStatusEffect : PhaseEffects
+
+    %% ====== TRAITS RACIAUX (passifs composables, data heritable) ======
+    %% Reutilise FAttributeModifier + UAbilityDefinition + EDamageClass existants.
+    class URaceTrait {
+        +TraitName : FName
+        +ParentTrait : URaceTrait*
+        +GrantedAbilities : TArray~UAbilityDefinition*~
+        +PassiveModifiers : TArray~FAttributeModifier~
+        +Immunities : TArray~EDamageClass~
+        +GetEffectiveTrait() URaceTrait*
+    }
+    URaceTrait --> URaceTrait : ParentTrait
+    URaceTrait ..|> IInheritableDefinition
+    URaceTrait o-- FAttributeModifier : PassiveModifiers
+    URaceTrait --> UAbilityDefinition : GrantedAbilities
 
     %% ====== RACE (DATA ASSET CENTRAL, HÉRITABLE) ======
     class URaceData {
@@ -471,12 +656,18 @@ classDiagram
         +LocalBodyOverrides : TMap~BodyPartType, FBodyPartDefinition~
         +LocalAbilityOverrides : TMap~FName, UAbilityDefinition~
         +Factions : TArray~UFactionData*~
+        +Traits : TArray~URaceTrait*~
+        +ElementalAffinities : TMap~EDamageClass, float~
+        +AIProfile : EAIBehaviorProfile
+        +DangerLevel : int
+        +EntityTier : EEntityTier
         +bIsMountable : bool
         +MaxRiders : int
         +GetEffectiveBodyPlan() UBodyPlan*
         +GetEffectiveAttributes() UAttributeSetDefinition*
         +GetEffectiveNeeds() UNeedSetDefinition*
         +GetEffectiveAbilities() TArray~UAbilityDefinition*~
+        +GetEffectiveTraits() TArray~URaceTrait*~
         +GetEffectiveLoot() ULootTable*
     }
     URaceData --> URaceData : ParentRace
@@ -488,6 +679,9 @@ classDiagram
     URaceData --> UGrowthData : LifeCycle
     URaceData --> ULootTable
     URaceData --> UFactionData : Factions
+    URaceData --> URaceTrait : Traits
+    URaceData --> EAIBehaviorProfile : AIProfile
+    URaceData --> EEntityTier : EntityTier
 
     %% ====== EXEMPLE : ESPÈCES = DONNÉES (plus de classes C++) ======
     class RaceFeline {
@@ -507,6 +701,32 @@ classDiagram
     RaceFeline <.. RaceCat : ParentRace
     RaceFeline <.. RaceLion : ParentRace
 
+    %% ====== EXEMPLE : CREATURES FANTASTIQUES = DONNEES ======
+    %% Reutilisent un body-plan existant + Traits/Abilities/Affinites (data).
+    class RaceDragon {
+        <<DataAsset>>
+        +ParentRace : none
+        +MorphologyClass : ADraconic
+        +ElementalAffinities : Fire=0.0
+        +EntityTier : Boss
+        +AIProfile : Aggressive
+    }
+    class RaceSlime {
+        <<DataAsset>>
+        +ParentRace : none
+        +MorphologyClass : ASoftBody
+        +AIProfile : Neutral
+    }
+    class RaceGriffon {
+        <<DataAsset>>
+        +ParentRace : none
+        +MorphologyClass : AAvian
+        +bIsMountable : true
+    }
+    URaceData <.. RaceDragon : instance
+    URaceData <.. RaceSlime : instance
+    URaceData <.. RaceGriffon : instance
+
     %% ====== CONTRÔLEURS ======
     class AController {
         <<abstract>>
@@ -519,11 +739,13 @@ classDiagram
     class AAIController {
         +ControlledEntity : ALivingEntity*
         +Perception : UPerceptionComponent*
+        +ThreatComponent : UThreatComponent*
         +RunBehaviorTree(UBehaviorTree*)
     }
     AController <|-- APlayerController
     AController <|-- AAIController
     AAIController --> UPerceptionComponent : utilise
+    AAIController --> UThreatComponent : cible active
 
     %% ====== MONTURE / CAVALIER ======
     class URiderComponent {
@@ -552,6 +774,9 @@ classDiagram
         #BuildComponent : UBuildComponent*
         #AIController : AAIController*
         #RiderComponent : URiderComponent*
+        #ClassComponent : UClassComponent*
+        #ThreatComponent : UThreatComponent*
+        #BossComponent : UBossComponent*
     }
     ALivingEntity ..|> ITakeDamage
     ALivingEntity ..|> IHasBodyParts
@@ -571,12 +796,14 @@ classDiagram
     ALivingEntity o-- UBuildComponent : optionnel
     ALivingEntity --> AAIController : possédé par (optionnel)
     ALivingEntity *-- URiderComponent : optionnel (cavalier)
+    ALivingEntity o-- UClassComponent : optionnel (joueur / PNJ)
+    ALivingEntity o-- UThreatComponent : optionnel (hostile)
+    ALivingEntity o-- UBossComponent : optionnel (boss)
 
     UAbilityComponent o-- UAbilityInstance : available
     UAbilityComponent --> UAbilityInstance : active
     UAbilityInstance --> UAbilityDefinition : definition
     UAbilityInstance --> UStatusEffect : AppliedEffects
-    UAbilityDefinition --> UStatusEffect : TargetEffect
     UInventoryComponent o-- FInventorySlot
     FInventorySlot --> UItemBase
     UEquipmentComponent o-- FEquipmentSlot
@@ -680,6 +907,25 @@ classDiagram
     AEel ..|> ISwimming
     AMurene ..|> ISwimming
 
+    %% ---------- MORPHOLOGIES FANTASTIQUES ----------
+    %% Heritent d'un body-plan EXISTANT et n'ajoutent QUE du comportement
+    %% (le vol IFlying + le souffle). ADraconic herite IMountable d'AQuadruped
+    %% => dragons montables gratuits. Slimes = ASoftBody, golems = ABiped/AExoskeleton
+    %% (data + URaceTrait), sans nouvelle classe.
+    class ADraconic {
+        <<abstract>>
+        +Wings : TArray~UBodyPart*~
+        +BreathAttack(UDamageType* Element)
+    }
+    class AAvian {
+        <<abstract>>
+        +Wings : TArray~UBodyPart*~
+    }
+    AQuadruped <|-- ADraconic
+    ABiped <|-- AAvian
+    ADraconic ..|> IFlying
+    AAvian ..|> IFlying
+
     %% ====== TERRAIN VOXEL ======
     class FBlockData {
         +BlockId : int
@@ -704,6 +950,7 @@ classDiagram
         +BiomeName : FName
         +BaseTemperature : float
         +Humidity : float
+        +DangerLevel : int
         +BlockPalette : TArray~UBlockItem*~
         +SpawnRules : TArray~USpawnRule*~
         +GetEffectiveSpawnRules() TArray~USpawnRule*~
@@ -731,11 +978,47 @@ classDiagram
     USpawnRule --> UBiome : RequiredBiome
     UBiome o-- USpawnRule
 
+    %% ====== STRUCTURES / DONJONS / POI ======
+    %% Reutilise USpawnRule (monstres) + ULootTable (coffres) existants.
+    %% Suit le pattern d'heritage (ParentStructure + GetEffective).
+    class UStructureData {
+        +StructureName : FName
+        +ParentStructure : UStructureData*
+        +Size : FIntVector
+        +VoxelTemplate : TArray~FBlockData~
+        +SpawnRules : TArray~USpawnRule*~
+        +LootTable : ULootTable*
+        +RequiredBiome : UBiome*
+        +GetEffectiveSpawnRules() TArray~USpawnRule*~
+    }
+    UStructureData --> UStructureData : ParentStructure
+    UStructureData ..|> IInheritableDefinition
+    UStructureData o-- USpawnRule : SpawnRules
+    UStructureData --> ULootTable
+    UStructureData --> UBiome : RequiredBiome
+    UStructureData o-- FBlockData : VoxelTemplate
+
+    %% ====== DANGERS ENVIRONNEMENTAUX ======
+    %% Lave, gaz, feu... Reutilise UDamageType + ITakeDamage + UStatusEffect.
+    %% Noyade / oxygene / temperature = des Besoins (UNeedSetDefinition), pas ici.
+    class AHazardVolume {
+        +HazardName : FName
+        +DamageType : UDamageType*
+        +DamagePerSecond : float
+        +AppliedEffect : UStatusEffect*
+        +ApplyToEntity(ALivingEntity*)
+    }
+    AHazardVolume --> UDamageType
+    AHazardVolume --> UStatusEffect : AppliedEffect
+    AHazardVolume ..> ITakeDamage : inflige
+
     %% ====== ORCHESTRATION ======
     class ASpawnManager {
         +World : AVoxelWorld*
         +ActiveSpawnRules : TArray~USpawnRule*~
+        +AvailableStructures : TArray~UStructureData*~
         +SpawnEntity(URaceData*, FVector) ALivingEntity*
+        +PlaceStructure(UStructureData*, FVector)
         +TickSpawning(float DeltaTime)
     }
     class AGameMode {
@@ -743,6 +1026,7 @@ classDiagram
         +WorldTime : UWorldTime*
         +DefaultPlayerRace : URaceData*
         +AvailableBiomes : TArray~UBiome*~
+        +AvailableStructures : TArray~UStructureData*~
     }
     class AGameState {
         +CurrentTime : UWorldTime*
@@ -751,9 +1035,11 @@ classDiagram
     ASpawnManager --> AVoxelWorld
     ASpawnManager o-- USpawnRule
     ASpawnManager ..> ALivingEntity : crée
+    ASpawnManager ..> UStructureData : place
     AGameMode *-- ASpawnManager
     AGameMode *-- UWorldTime
     AGameMode o-- UBiome
+    AGameMode o-- UStructureData
     AGameState --> UWorldTime
     AGameState o-- APlayerController
 
@@ -792,5 +1078,14 @@ classDiagram
     note for UCombatComponent "Relie l'arme équipée (UEquipmentItem) aux dégâts.\nProduit un FDamageEvent envoyé via ITakeDamage."
     note for ULootTable "Drops à la mort (OnDestroyed).\nHéritable : table parente + surcharge."
     note for UGrowthComponent "Âge, stades (œuf->jeune->adulte) et reproduction.\nDonnées dans UGrowthData (héritable)."
-    note for AGameMode "Orchestration : spawn, temps, biomes,\nrace par défaut du joueur."
+    note for AGameMode "Orchestration : spawn, temps, biomes,\nrace par défaut du joueur, structures/donjons."
     note for USaveGame "Persistance monde + entités + joueur."
+    note for UAbilityDefinition "Magie data-driven : ResourceCosts (Mana=attribut,\nStamina...), Element (EDamageClass), DeliveryMethod\n(SelfCast/Projectile/AoE) et Effects polymorphes."
+    note for UAbilityEffect "Payload de sort polymorphe (ApplyEffect).\nRéutilise FDamageEvent/ITakeDamage, UStatusEffect,\nURaceData+ASpawnManager (invocation). Zéro doublon."
+    note for UClassComponent "Classes/jobs isekai. UClassDefinition héritable\n(ParentClass). Arbre USkillTree débloqué avec les\nSkillPoints octroyés par UProgressionComponent."
+    note for URaceTrait "Passifs raciaux composables (data héritable) :\nrégénération, immunités élémentaires, vol magique.\nRéutilise FAttributeModifier + EDamageClass."
+    note for ADraconic "Créatures fantastiques = body-plan EXISTANT + comportement.\nADraconic hérite d'AQuadruped (donc IMountable :\ndragons montables) et ajoute IFlying + BreathAttack.\nSlimes=ASoftBody, golems=ABiped/AExoskeleton (data)."
+    note for UThreatComponent "Agro/menace des hostiles. Réutilise\nUPerceptionComponent (détection) + UFactionData\n(relations) ; ajoute seulement la cible active."
+    note for UBossComponent "Boss/élites : phases (FBossPhase) greffées sur\nn'importe quelle morphologie. EntityTier=Boss sur la\nrace. Loot via ULootTable existante."
+    note for UStructureData "Donjons/POI héritables (ParentStructure).\nMonstres via USpawnRule existant, coffres via\nULootTable. Placés par ASpawnManager."
+    note for AHazardVolume "Dangers de zone (lave, gaz, feu) via UDamageType +\nITakeDamage + UStatusEffect. Noyade/oxygène/température\nrestent des Besoins (UNeedSetDefinition)."
