@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "code-reviewer": {
+      "source": "google-gemini/gemini-cli",
+      "sourceType": "github",
+      "skillPath": ".gemini/skills/code-reviewer/SKILL.md",
+      "computedHash": "270f0dd1d4c15a798bad5253a309cdc2056fe5322f99ba06ca22ce50581adc02"
+    },
+    "database": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/database/SKILL.md",
+      "computedHash": "c426e20f40448ddaccf86fcade3bf0ef4a08baf23837a21f055468006174881d"
+    },
+    "game-build-log-triage": {
+      "source": "akillness/oh-my-skills",
+      "sourceType": "github",
+      "skillPath": ".agent-skills/game-build-log-triage/SKILL.md",
+      "computedHash": "3ab2e91c8ec9c02ce25610123c5d41db3f4d7346f98db933dda1bbeac9cd2bb0"
+    },
+    "game-development": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "github",
+      "skillPath": "cli-tool/components/skills/creative-design/game-development/SKILL.md",
+      "computedHash": "1e379386d78fca7ed1c0fb735114da2848ca2caf17290373eebd6ebf1d3657cc"
+    },
+    "isms-audit-expert": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "github",
+      "skillPath": "cli-tool/components/skills/enterprise-communication/isms-audit-expert/SKILL.md",
+      "computedHash": "ba3825dfe6699c7f97476f6f5f073f1454cbc796f9c332ce772a033264315b3e"
+    },
+    "observability-engineer": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/observability-engineer/SKILL.md",
+      "computedHash": "5fd8f9591f0dea4c1e393e83d7dfcabf07147556423396e61f65bc7987b54c1f"
+    },
+    "tdd-orchestrator": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tdd-orchestrator/SKILL.md",
+      "computedHash": "d9d32fa1b5c2d6d0a66ef4bf689157ce4a9a475ddd137b0beceafff11d62e62e"
+    },
+    "unreal-engine-cpp-pro": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/unreal-engine-cpp-pro/SKILL.md",
+      "computedHash": "2662396c939172e1328040cf98c59eefb8c40fbc59d0ec0bfb9c3fafd3a09305"
+    }
+  }
+}

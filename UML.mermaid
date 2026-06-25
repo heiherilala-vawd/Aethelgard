@@ -1,0 +1,796 @@
+classDiagram
+    direction TB
+
+    %% =====================================================================
+    %% CONVENTION D'ARCHITECTURE (principe : une seule source de vérité)
+    %% ---------------------------------------------------------------------
+    %% 1. Toute donnée d'équilibrage (stats, besoins, loot, locomotion,
+    %%    morphologie...) vit dans un DATA ASSET qui possède un Parent et
+    %%    un GetEffectiveX() : on modifie le PARENT, tous les enfants
+    %%    héritent. La surcharge (override) se fait au niveau enfant.
+    %% 2. La logique de surcharge est écrite UNE SEULE FOIS via
+    %%    l'interface IInheritableDefinition (méta-DRY).
+    %% 3. Une CLASSE C++ n'existe QUE si elle ajoute du COMPORTEMENT
+    %%    (une méthode ou une interface). Sinon, c'est une URaceData (data).
+    %%    -> Les espèces (Cat, Lion, Cobra...) sont des URaceData.
+    %% =====================================================================
+
+    %% ====== ENUMERATIONS ======
+    class EAbilityCategory {
+        <<enumeration>>
+        Locomotion
+        Combat
+        Interaction
+        Vital
+    }
+    class EItemCategory {
+        <<enumeration>>
+        Block
+        Tool
+        Food
+        Material
+        Equipment
+    }
+    class EFactionRelation {
+        <<enumeration>>
+        Ally
+        Neutral
+        Enemy
+    }
+    class EDamageClass {
+        <<enumeration>>
+        Physical
+        Fire
+        Cold
+        Poison
+        Lightning
+        Magic
+    }
+    class EModifierOp {
+        <<enumeration>>
+        Add
+        Multiply
+        Override
+    }
+    class EGender {
+        <<enumeration>>
+        Male
+        Female
+        None
+    }
+    class EWeather {
+        <<enumeration>>
+        Clear
+        Rain
+        Snow
+        Storm
+        Fog
+    }
+
+    %% ====== PATTERN D'HÉRITAGE GÉNÉRALISÉ ======
+    class IInheritableDefinition {
+        <<interface>>
+        +GetParent() IInheritableDefinition*
+        +ResolveEffective()
+    }
+
+    %% ====== INTERFACES DE COMPORTEMENT ======
+    class ITakeDamage {
+        <<interface>>
+        +TakeDamage(FDamageEvent Event) float
+        +OnDestroyed()
+    }
+    class IHasBodyParts {
+        <<interface>>
+        +GetBodyPart(BodyPartType Type) UBodyPart*
+        +GetAllBodyParts() TArray~UBodyPart*~
+    }
+    class IFlying {
+        <<interface>>
+        +TakeOff() +Land() +IsFlying() bool
+    }
+    class ISwimming {
+        <<interface>>
+        +Swim() +Dive()
+    }
+    class IMountable {
+        <<interface>>
+        +Mount(AActor* Rider)
+        +Dismount()
+        +IsMounted() bool
+        +GetMaxRiders() int
+    }
+
+    %% ====== TYPES DE DÉGÂTS & COMBAT ======
+    class UDamageType {
+        +DamageTypeName : FName
+        +DamageClass : EDamageClass
+        +BaseDamage : float
+        +KnockbackForce : float
+    }
+    class FDamageEvent {
+        +Amount : float
+        +DamageType : UDamageType*
+        +Instigator : AActor*
+        +HitBodyPart : UBodyPart*
+        +ImpactPoint : FVector
+    }
+    class UCombatComponent {
+        +OwningEntity : ALivingEntity*
+        +EquippedWeapon : UEquipmentItem*
+        +ComputeDamage() float
+        +PerformAttack(AActor* Target)
+        +ResolveDamage(FDamageEvent) float
+    }
+    FDamageEvent --> UDamageType
+    FDamageEvent --> UBodyPart : HitBodyPart
+    UCombatComponent ..> FDamageEvent : génère
+    UCombatComponent ..> ITakeDamage : attaque cible
+    UCombatComponent --> UEquipmentItem : EquippedWeapon
+
+    %% ====== DONNÉES DE CORPS (héritables) ======
+    class FSegmentScale {
+        +SegmentName : FName
+        +Scale : FVector
+        +Thickness : float
+    }
+    class FBodyPartDefinition {
+        +PartType : BodyPartType
+        +bInheritFromParent : bool
+        +DefaultHealth : float
+        +SocketName : FName
+        +OverallScale : FVector
+        +SegmentScales : TArray~FSegmentScale~
+        +DamageResistances : TMap~EDamageClass, float~
+    }
+    class UBodyPlan {
+        +PlanName : FName
+        +ParentPlan : UBodyPlan*
+        +PartDefinitions : TArray~FBodyPartDefinition~
+        +BaseAbilities : TArray~UAbilityDefinition*~
+        +GetEffectivePartDef(BodyPartType) FBodyPartDefinition
+        +GetEffectiveAbilities() TArray~UAbilityDefinition*~
+    }
+    UBodyPlan --> UBodyPlan : ParentPlan
+    UBodyPlan ..|> IInheritableDefinition
+    class UBodyPart {
+        +EffectiveDefinition : FBodyPartDefinition
+        +CurrentHealth : float
+        +Owner : ALivingEntity*
+        +bIsFunctional : bool
+    }
+    UBodyPart --> FBodyPartDefinition : EffectiveDefinition
+
+    %% ====== ATTRIBUTS / STATS (data-driven + héritables) ======
+    class FAttributeModifier {
+        +AttributeName : FName
+        +ModifierOp : EModifierOp
+        +Value : float
+    }
+    class FAttributeDef {
+        +AttributeName : FName
+        +BaseValue : float
+        +MinValue : float
+        +MaxValue : float
+        +bInheritFromParent : bool
+    }
+    class UAttributeSetDefinition {
+        +Parent : UAttributeSetDefinition*
+        +Attributes : TArray~FAttributeDef~
+        +GetEffectiveAttribute(FName) FAttributeDef
+    }
+    UAttributeSetDefinition --> UAttributeSetDefinition : Parent
+    UAttributeSetDefinition o-- FAttributeDef
+    UAttributeSetDefinition ..|> IInheritableDefinition
+    class UAttributeSet {
+        +OwningEntity : ALivingEntity*
+        +Definition : UAttributeSetDefinition*
+        +Current : TMap~FName, float~
+        +GetValue(FName) float
+        +ApplyModifier(FAttributeModifier)
+        +RecalculateFromModifiers()
+    }
+    UAttributeSet --> UAttributeSetDefinition : Definition
+
+    %% ====== BESOINS (data-driven + héritables) ======
+    class FNeedDef {
+        +NeedName : FName
+        +DecayRate : float
+        +MaxValue : float
+        +CriticalThreshold : float
+        +EffectOnCritical : UStatusEffect*
+        +bInheritFromParent : bool
+    }
+    class UNeedSetDefinition {
+        +Parent : UNeedSetDefinition*
+        +Needs : TArray~FNeedDef~
+        +GetEffectiveNeed(FName) FNeedDef
+    }
+    UNeedSetDefinition --> UNeedSetDefinition : Parent
+    UNeedSetDefinition o-- FNeedDef
+    UNeedSetDefinition ..|> IInheritableDefinition
+    class UBehaviorComponent {
+        +OwningEntity : ALivingEntity*
+        +NeedSet : UNeedSetDefinition*
+        +CurrentNeeds : TMap~FName, float~
+        +TickNeeds(float DeltaTime)
+        +GetNeedLevel(FName Need) float
+        +SetNeedLevel(FName Need, float Value)
+    }
+    UBehaviorComponent --> UNeedSetDefinition : NeedSet
+    FNeedDef --> UStatusEffect : EffectOnCritical
+
+    %% ====== LOCOMOTION (data-driven + héritable) ======
+    class ULocomotionData {
+        +Parent : ULocomotionData*
+        +WalkSpeed : float
+        +RunSpeed : float
+        +SwimSpeed : float
+        +FlySpeed : float
+        +JumpHeight : float
+        +TurnRate : float
+        +GetEffectiveSpeed(FName Mode) float
+    }
+    ULocomotionData --> ULocomotionData : Parent
+    ULocomotionData ..|> IInheritableDefinition
+
+    %% ====== CYCLE DE VIE / CROISSANCE / REPRODUCTION ======
+    class FGrowthStage {
+        +StageName : FName
+        +MinAge : float
+        +ScaleMultiplier : float
+        +AttributeMultiplier : float
+    }
+    class UGrowthData {
+        +Parent : UGrowthData*
+        +Stages : TArray~FGrowthStage~
+        +AdultAge : float
+        +GestationTime : float
+        +OffspringCount : int
+        +GetEffectiveStages() TArray~FGrowthStage~
+    }
+    UGrowthData --> UGrowthData : Parent
+    UGrowthData o-- FGrowthStage
+    UGrowthData ..|> IInheritableDefinition
+    class UGrowthComponent {
+        +OwningEntity : ALivingEntity*
+        +GrowthData : UGrowthData*
+        +Age : float
+        +Gender : EGender
+        +CurrentStage : FGrowthStage
+        +TickAge(float DeltaTime)
+        +CanReproduceWith(ALivingEntity*) bool
+        +Reproduce(ALivingEntity* Partner) ALivingEntity*
+    }
+    UGrowthComponent --> UGrowthData : GrowthData
+    UGrowthComponent --> EGender : Gender
+
+    %% ====== CAPACITÉS ======
+    class UAbilityDefinition {
+        +AbilityName : FName
+        +ParentAbility : UAbilityDefinition*
+        +Category : EAbilityCategory
+        +RequiredBodyParts : TArray~BodyPartType~
+        +RequiredMorphology : TArray~FName~
+        +StaminaCost : float
+        +Cooldown : float
+        +Animation : UAnimMontage*
+        +TargetEffect : UStatusEffect*
+        +CanActivate(ALivingEntity*) bool
+        +GetEffectiveDefinition() UAbilityDefinition*
+    }
+    UAbilityDefinition --> UAbilityDefinition : ParentAbility
+    UAbilityDefinition ..|> IInheritableDefinition
+    class UAbilityInstance {
+        +Definition : UAbilityDefinition*
+        +Owner : ALivingEntity*
+        +bIsActive : bool
+        +AppliedEffects : TArray~UStatusEffect*~
+        +Start()
+        +Interrupt()
+    }
+    class UAbilityComponent {
+        +OwningEntity : ALivingEntity*
+        +AvailableAbilities : TArray~UAbilityInstance*~
+        +ActiveAbility : UAbilityInstance*
+        +ActivateAbility(FName)
+        +CanActivateAbility(FName) bool
+    }
+
+    %% ====== OBJETS (hiérarchie + données héritables) ======
+    class UItemBase {
+        +ItemID : FName
+        +ParentItem : UItemBase*
+        +DisplayName : FText
+        +MaxStack : int
+        +Weight : float
+        +Icon : UTexture2D*
+        +ItemCategory : EItemCategory
+        +GetEffectiveItem() UItemBase*
+    }
+    UItemBase --> UItemBase : ParentItem
+    UItemBase ..|> IInheritableDefinition
+    class UEquipmentItem {
+        +SlotType : BodyPartType
+        +Modifiers : TArray~FAttributeModifier~
+        +DamageType : UDamageType*
+        +Armor : float
+        +Durability : float
+        +MaxDurability : float
+    }
+    class UConsumableItem {
+        +NeedRestored : TMap~FName, float~
+        +AppliedEffects : TArray~UStatusEffect*~
+    }
+    class UBlockItem {
+        +BlockId : int
+        +Hardness : float
+        +PlacedActorClass : TSubclassOf~AActor~
+    }
+    UItemBase <|-- UEquipmentItem
+    UItemBase <|-- UConsumableItem
+    UItemBase <|-- UBlockItem
+    UEquipmentItem o-- FAttributeModifier : Modifiers
+    UEquipmentItem --> UDamageType
+    UConsumableItem --> UStatusEffect : AppliedEffects
+
+    %% ====== INVENTAIRE ======
+    class FInventorySlot {
+        +Item : UItemBase*
+        +Quantity : int
+    }
+    class UInventoryComponent {
+        +OwningEntity : ALivingEntity*
+        +Slots : TArray~FInventorySlot~
+        +AddItem(UItemBase*, int) bool
+        +RemoveItem(UItemBase*, int) bool
+        +HasItem(UItemBase*, int) bool
+    }
+
+    %% ====== ÉQUIPEMENT ======
+    class FEquipmentSlot {
+        +SlotType : BodyPartType
+        +EquippedItem : UEquipmentItem*
+        +bIsActive : bool
+    }
+    class UEquipmentComponent {
+        +OwningEntity : ALivingEntity*
+        +Slots : TArray~FEquipmentSlot~
+        +EquipItem(UEquipmentItem*, BodyPartType) bool
+        +UnequipItem(BodyPartType) bool
+        +GetEquippedItem(BodyPartType) UEquipmentItem*
+    }
+    UEquipmentComponent ..> UAttributeSet : applique Modifiers
+
+    %% ====== CRAFT / CONSTRUCTION ======
+    class FRecipeIngredient {
+        +Item : UItemBase*
+        +Quantity : int
+    }
+    class URecipe {
+        +RecipeID : FName
+        +Ingredients : TArray~FRecipeIngredient~
+        +Results : TArray~FInventorySlot~
+        +RequiredStation : FName
+        +CraftTime : float
+    }
+    class UCraftingComponent {
+        +OwningEntity : ALivingEntity*
+        +KnownRecipes : TArray~URecipe*~
+        +CanCraft(URecipe*) bool
+        +Craft(URecipe*) bool
+    }
+    class UBuildComponent {
+        +OwningEntity : ALivingEntity*
+        +TargetWorld : AVoxelWorld*
+        +PlaceBlock(UBlockItem*, FIntVector)
+        +RemoveBlock(FIntVector)
+    }
+    URecipe o-- FRecipeIngredient
+    FRecipeIngredient --> UItemBase
+    URecipe --> FInventorySlot : Results
+    UCraftingComponent o-- URecipe : KnownRecipes
+    UBuildComponent ..> UBlockItem : place
+    UBuildComponent --> AVoxelWorld
+
+    %% ====== LOOT ======
+    class FLootEntry {
+        +Item : UItemBase*
+        +MinQuantity : int
+        +MaxQuantity : int
+        +DropChance : float
+    }
+    class ULootTable {
+        +ParentTable : ULootTable*
+        +Entries : TArray~FLootEntry~
+        +RollLoot() TArray~FInventorySlot~
+    }
+    ULootTable --> ULootTable : ParentTable
+    ULootTable o-- FLootEntry
+    ULootTable ..|> IInheritableDefinition
+    FLootEntry --> UItemBase
+
+    %% ====== EFFETS D'ÉTAT ======
+    class UStatusEffect {
+        +EffectName : FName
+        +Duration : float
+        +TickInterval : float
+        +Modifiers : TArray~FAttributeModifier~
+        +ApplyTo(ALivingEntity*)
+        +Remove()
+    }
+    class UStatusEffectComponent {
+        +OwningEntity : ALivingEntity*
+        +ActiveEffects : TArray~UStatusEffect*~
+        +ApplyEffect(UStatusEffect*)
+        +RemoveEffect(FName)
+    }
+    UStatusEffect --> FAttributeModifier : Modifiers
+
+    %% ====== FACTION ======
+    class UFactionData {
+        +FactionName : FName
+        +Relations : TMap~UFactionData*, EFactionRelation~
+    }
+    UFactionData --> EFactionRelation : Relations
+
+    %% ====== PROGRESSION ======
+    class UProgressionComponent {
+        +OwningEntity : ALivingEntity*
+        +CurrentXP : int
+        +CurrentLevel : int
+        +LevelThresholds : TArray~int~
+        +AddXP(int)
+        +GetLevel() int
+    }
+
+    %% ====== PERCEPTION (IA) ======
+    class UPerceptionComponent {
+        +OwningEntity : ALivingEntity*
+        +SightRadius : float
+        +SightAngle : float
+        +HearingRadius : float
+        +SmellRadius : float
+        +DetectedEntities : TArray~ALivingEntity*~
+        +CanSee(AActor*) bool
+        +GetBestTarget() ALivingEntity*
+    }
+
+    %% ====== RACE (DATA ASSET CENTRAL, HÉRITABLE) ======
+    class URaceData {
+        +RaceName : FName
+        +FamilyTag : FName
+        +ParentRace : URaceData*
+        +MorphologyClass : TSubclassOf~ALivingEntity~
+        +BaseBodyPlan : UBodyPlan*
+        +AttributeSet : UAttributeSetDefinition*
+        +NeedSet : UNeedSetDefinition*
+        +LocomotionData : ULocomotionData*
+        +LifeCycle : UGrowthData*
+        +LootTable : ULootTable*
+        +LocalBodyOverrides : TMap~BodyPartType, FBodyPartDefinition~
+        +LocalAbilityOverrides : TMap~FName, UAbilityDefinition~
+        +Factions : TArray~UFactionData*~
+        +bIsMountable : bool
+        +MaxRiders : int
+        +GetEffectiveBodyPlan() UBodyPlan*
+        +GetEffectiveAttributes() UAttributeSetDefinition*
+        +GetEffectiveNeeds() UNeedSetDefinition*
+        +GetEffectiveAbilities() TArray~UAbilityDefinition*~
+        +GetEffectiveLoot() ULootTable*
+    }
+    URaceData --> URaceData : ParentRace
+    URaceData ..|> IInheritableDefinition
+    URaceData --> UBodyPlan : BaseBodyPlan
+    URaceData --> UAttributeSetDefinition
+    URaceData --> UNeedSetDefinition
+    URaceData --> ULocomotionData
+    URaceData --> UGrowthData : LifeCycle
+    URaceData --> ULootTable
+    URaceData --> UFactionData : Factions
+
+    %% ====== EXEMPLE : ESPÈCES = DONNÉES (plus de classes C++) ======
+    class RaceFeline {
+        <<DataAsset>>
+        +ParentRace : none
+        +MorphologyClass : AFeline
+    }
+    class RaceCat {
+        <<DataAsset>>
+        +ParentRace : RaceFeline
+    }
+    class RaceLion {
+        <<DataAsset>>
+        +ParentRace : RaceFeline
+    }
+    URaceData <.. RaceFeline : instance
+    RaceFeline <.. RaceCat : ParentRace
+    RaceFeline <.. RaceLion : ParentRace
+
+    %% ====== CONTRÔLEURS ======
+    class AController {
+        <<abstract>>
+        +ControlledPawn : APawn*
+    }
+    class APlayerController {
+        +ControlledEntity : ALivingEntity*
+        +InputComponent : UInputComponent*
+    }
+    class AAIController {
+        +ControlledEntity : ALivingEntity*
+        +Perception : UPerceptionComponent*
+        +RunBehaviorTree(UBehaviorTree*)
+    }
+    AController <|-- APlayerController
+    AController <|-- AAIController
+    AAIController --> UPerceptionComponent : utilise
+
+    %% ====== MONTURE / CAVALIER ======
+    class URiderComponent {
+        +OwningEntity : ALivingEntity*
+        +CurrentMount : ALivingEntity*
+        +Mount(ALivingEntity* MountTarget)
+        +Dismount()
+    }
+
+    %% ====== BASE VIVANTE ======
+    class ALivingEntity {
+        <<abstract>>
+        #RaceData : URaceData*
+        #BodyParts : TArray~UBodyPart*~
+        #AttributeSet : UAttributeSet*
+        #AbilityComponent : UAbilityComponent*
+        #CombatComponent : UCombatComponent*
+        #InventoryComponent : UInventoryComponent*
+        #EquipmentComponent : UEquipmentComponent*
+        #StatusEffectComponent : UStatusEffectComponent*
+        #ProgressionComponent : UProgressionComponent*
+        #BehaviorComponent : UBehaviorComponent*
+        #GrowthComponent : UGrowthComponent*
+        #PerceptionComponent : UPerceptionComponent*
+        #CraftingComponent : UCraftingComponent*
+        #BuildComponent : UBuildComponent*
+        #AIController : AAIController*
+        #RiderComponent : URiderComponent*
+    }
+    ALivingEntity ..|> ITakeDamage
+    ALivingEntity ..|> IHasBodyParts
+    ALivingEntity *-- URaceData
+    ALivingEntity o-- UBodyPart
+    ALivingEntity *-- UAttributeSet
+    ALivingEntity *-- UAbilityComponent
+    ALivingEntity *-- UCombatComponent
+    ALivingEntity *-- UInventoryComponent
+    ALivingEntity *-- UEquipmentComponent
+    ALivingEntity *-- UStatusEffectComponent
+    ALivingEntity *-- UProgressionComponent
+    ALivingEntity *-- UBehaviorComponent
+    ALivingEntity *-- UGrowthComponent
+    ALivingEntity o-- UPerceptionComponent : optionnel
+    ALivingEntity o-- UCraftingComponent : optionnel
+    ALivingEntity o-- UBuildComponent : optionnel
+    ALivingEntity --> AAIController : possédé par (optionnel)
+    ALivingEntity *-- URiderComponent : optionnel (cavalier)
+
+    UAbilityComponent o-- UAbilityInstance : available
+    UAbilityComponent --> UAbilityInstance : active
+    UAbilityInstance --> UAbilityDefinition : definition
+    UAbilityInstance --> UStatusEffect : AppliedEffects
+    UAbilityDefinition --> UStatusEffect : TargetEffect
+    UInventoryComponent o-- FInventorySlot
+    FInventorySlot --> UItemBase
+    UEquipmentComponent o-- FEquipmentSlot
+    FEquipmentSlot --> UEquipmentItem : EquippedItem
+
+    %% ====== CLASSES MORPHOLOGIQUES (COMPORTEMENT UNIQUEMENT) ======
+    class AExoskeleton {
+        <<abstract>>
+        +ExoskeletonHardness : float
+        +Moult()
+    }
+    class ASoftBody {
+        <<abstract>>
+        +SlimeTrail()
+    }
+    class AFusiformAquatic {
+        <<abstract>>
+        +SwimSpeed : float
+    }
+    class AQuadruped {
+        <<abstract>>
+        +ForeLegs : TArray~UBodyPart*~
+        +HindLegs : TArray~UBodyPart*~
+        +Walk()
+    }
+    class ABiped {
+        <<abstract>>
+        +Arms : TArray~UBodyPart*~
+        +Legs : TArray~UBodyPart*~
+        +Walk()
+    }
+    class ASerpentiform {
+        <<abstract>>
+        +BodySegments : TArray~UBodyPart*~
+        +Slither()
+    }
+
+    ALivingEntity <|-- AExoskeleton
+    ALivingEntity <|-- ASoftBody
+    ALivingEntity <|-- AFusiformAquatic
+    ALivingEntity <|-- AQuadruped
+    ALivingEntity <|-- ABiped
+    ALivingEntity <|-- ASerpentiform
+
+    AFusiformAquatic ..|> ISwimming
+    ASerpentiform ..|> ISwimming : anguille, murène
+
+    %% ---------- EXOSKELETON (familles comportementales) ----------
+    AExoskeleton <|-- AInsect
+    AExoskeleton <|-- AArachnid
+    AExoskeleton <|-- ACrustacean
+    AExoskeleton <|-- AMyriapod
+
+    %% Ordres volants : gardés car ils implémentent IFlying (comportement)
+    AInsect <|-- ALepidoptera
+    AInsect <|-- AHymenoptera
+    AInsect <|-- ADiptera
+    ALepidoptera ..|> IFlying
+    ADiptera ..|> IFlying
+    AHymenoptera ..|> IFlying
+
+    %% ---------- CORPS MOU ----------
+    ASoftBody <|-- AGastropod
+    ASoftBody <|-- ABivalve
+    ASoftBody <|-- ACephalopod
+    ACephalopod ..|> ISwimming
+
+    %% ---------- FUSIFORME AQUATIQUE ----------
+    AFusiformAquatic <|-- AShark
+    AFusiformAquatic <|-- ARay
+    AFusiformAquatic <|-- ABonyFish
+    AFusiformAquatic <|-- ACetacean
+    AFusiformAquatic <|-- ASirenian
+
+    %% ---------- QUADRUPEDES ----------
+    AQuadruped ..|> IMountable
+    AQuadruped <|-- AFeline
+    AQuadruped <|-- ACanide
+    AQuadruped <|-- AUrsid
+    AQuadruped <|-- AEquide
+    AQuadruped <|-- ABovide
+    AQuadruped <|-- ACervide
+    AQuadruped <|-- ACamelid
+    AQuadruped <|-- AGiraffid
+    AQuadruped <|-- ARhinoceros
+    AQuadruped <|-- AHippopotamus
+    AQuadruped <|-- AElephant
+    AHippopotamus ..|> ISwimming
+
+    %% ---------- BIPEDES ----------
+    ABiped <|-- ARatite
+    ABiped <|-- APenguin
+    ARatite ..|> IMountable
+    APenguin ..|> ISwimming
+
+    %% ---------- SERPENTIFORME ----------
+    ASerpentiform <|-- ASnake
+    ASerpentiform <|-- AEel
+    ASerpentiform <|-- AMurene
+    ASerpentiform <|-- AAnnelid
+    AEel ..|> ISwimming
+    AMurene ..|> ISwimming
+
+    %% ====== TERRAIN VOXEL ======
+    class FBlockData {
+        +BlockId : int
+        +Health : float
+    }
+    class AVoxelChunk {
+        +Blocks : TArray~FBlockData~
+        +TakeDamage(int BlockIndex, float Amount)
+    }
+    class AVoxelWorld {
+        +Chunks : TMap~FIntVector, AVoxelChunk*~
+        +GetBlock(FIntVector) FBlockData
+        +SetBlock(FIntVector, int)
+    }
+    ITakeDamage <|.. AVoxelChunk
+    AVoxelWorld o-- AVoxelChunk
+    AVoxelChunk o-- FBlockData
+
+    %% ====== MONDE / BIOMES / TEMPS / MÉTÉO ======
+    class UBiome {
+        +Parent : UBiome*
+        +BiomeName : FName
+        +BaseTemperature : float
+        +Humidity : float
+        +BlockPalette : TArray~UBlockItem*~
+        +SpawnRules : TArray~USpawnRule*~
+        +GetEffectiveSpawnRules() TArray~USpawnRule*~
+    }
+    UBiome --> UBiome : Parent
+    UBiome ..|> IInheritableDefinition
+    class UWorldTime {
+        +TimeOfDay : float
+        +DayLength : float
+        +CurrentDay : int
+        +CurrentWeather : EWeather
+        +Temperature : float
+        +Tick(float DeltaTime)
+    }
+    UWorldTime --> EWeather : CurrentWeather
+    class USpawnRule {
+        +Race : URaceData*
+        +RequiredBiome : UBiome*
+        +MinCount : int
+        +MaxCount : int
+        +SpawnChance : float
+        +bNightOnly : bool
+    }
+    USpawnRule --> URaceData : Race
+    USpawnRule --> UBiome : RequiredBiome
+    UBiome o-- USpawnRule
+
+    %% ====== ORCHESTRATION ======
+    class ASpawnManager {
+        +World : AVoxelWorld*
+        +ActiveSpawnRules : TArray~USpawnRule*~
+        +SpawnEntity(URaceData*, FVector) ALivingEntity*
+        +TickSpawning(float DeltaTime)
+    }
+    class AGameMode {
+        +SpawnManager : ASpawnManager*
+        +WorldTime : UWorldTime*
+        +DefaultPlayerRace : URaceData*
+        +AvailableBiomes : TArray~UBiome*~
+    }
+    class AGameState {
+        +CurrentTime : UWorldTime*
+        +ActivePlayers : TArray~APlayerController*~
+    }
+    ASpawnManager --> AVoxelWorld
+    ASpawnManager o-- USpawnRule
+    ASpawnManager ..> ALivingEntity : crée
+    AGameMode *-- ASpawnManager
+    AGameMode *-- UWorldTime
+    AGameMode o-- UBiome
+    AGameState --> UWorldTime
+    AGameState o-- APlayerController
+
+    %% ====== SAUVEGARDE / PERSISTANCE ======
+    class FEntitySaveData {
+        +RaceID : FName
+        +Transform : FTransform
+        +Attributes : TMap~FName, float~
+        +Needs : TMap~FName, float~
+        +Inventory : TArray~FInventorySlot~
+        +Age : float
+    }
+    class FChunkSaveData {
+        +Coord : FIntVector
+        +Blocks : TArray~FBlockData~
+    }
+    class USaveGame {
+        +SaveSlot : FName
+        +WorldSeed : int
+        +SavedChunks : TArray~FChunkSaveData~
+        +SavedEntities : TArray~FEntitySaveData~
+        +PlayerData : FEntitySaveData
+        +Save()
+        +Load()
+    }
+    USaveGame o-- FEntitySaveData
+    USaveGame o-- FChunkSaveData
+
+    %% ====== NOTES ======
+    note for IInheritableDefinition "Pattern d'héritage écrit UNE fois.\nParent + GetEffective() = on modifie le parent,\ntous les enfants héritent ; surcharge au niveau enfant."
+    note for URaceData "DATA ASSET central. Une ESPÈCE = une URaceData\n(ParentRace pour l'héritage). MorphologyClass pointe\nvers la classe C++ de comportement (AFeline...).\nLes anciennes classes ACat/ALion/ACobra... sont\nmaintenant des instances de données."
+    note for AFeline "Une classe C++ n'existe QUE si elle ajoute du\ncomportement (méthode/interface). Une espèce qui ne\ndiffère que par des nombres reste une URaceData.\nEscape hatch : promouvoir une espèce en classe C++\nuniquement si elle a un comportement unique (surcharge code)."
+    note for ALivingEntity "Parent de tout être vivant.\nPlus de Health/MaxHealth en dur :\nles stats vivent dans UAttributeSet (data héritable)."
+    note for UAttributeSet "Stats runtime calculées depuis\nUAttributeSetDefinition (héritable) + modificateurs\n(équipement, effets d'état)."
+    note for UBehaviorComponent "Besoins data-driven (UNeedSetDefinition).\nAjouter Oxygène / Température / Sommeil = data,\nsans modifier le code. Surcharge par race."
+    note for UCombatComponent "Relie l'arme équipée (UEquipmentItem) aux dégâts.\nProduit un FDamageEvent envoyé via ITakeDamage."
+    note for ULootTable "Drops à la mort (OnDestroyed).\nHéritable : table parente + surcharge."
+    note for UGrowthComponent "Âge, stades (œuf->jeune->adulte) et reproduction.\nDonnées dans UGrowthData (héritable)."
+    note for AGameMode "Orchestration : spawn, temps, biomes,\nrace par défaut du joueur."
+    note for USaveGame "Persistance monde + entités + joueur."
