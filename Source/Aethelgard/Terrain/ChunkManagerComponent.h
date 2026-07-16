@@ -22,13 +22,12 @@ public:
     UChunkManagerComponent();
 
     void SetWorldGenerator(UWorldGeneratorComponent* G) { Generator = G; }
-    void SetMeshGenerator(UVoxelMeshGenerator* G) { Mesher = G; }
 
     UPROPERTY(EditAnywhere, Category = "Chunks")
     int32 ViewDistance = 4;
 
-    // All positions are in BLOCK coordinates (divide world units by BlockScale)
-    void UpdateCenter(const FIntPoint& CenterBlockCoord);
+    // All positions in BLOCK coordinates
+    void UpdateCenter(const FIntPoint& CenterBlock);
 
     TSharedPtr<FChunkData> GetChunk(const FIntPoint& C) const;
     EBlockId GetBlock(int32 BX, int32 BY, int32 BZ) const;
@@ -43,21 +42,20 @@ private:
     UPROPERTY()
     UWorldGeneratorComponent* Generator = nullptr;
 
-    UPROPERTY()
-    UVoxelMeshGenerator* Mesher = nullptr;
-
     TMap<FIntPoint, TSharedPtr<FChunkData>> AllChunks;
-    TSet<FIntPoint> ActiveChunks;
+    TSet<FIntPoint> GeneratingChunks;
+    TSet<FIntPoint> MeshReadyChunks;
 
-    struct FPendingChunk
-    {
-        FIntPoint Coord;
-        bool bGenerate;
-    };
-    TQueue<FPendingChunk> PendingQueue;
+    TArray<FIntPoint> PendingGeneration;
+    TArray<FIntPoint> PendingRemoval;
 
-    void GenerateAndMesh(const FIntPoint& C);
-    void RemoveChunk(const FIntPoint& C);
+    void GenerateOne(FIntPoint C);
+    void RemoveOne(FIntPoint C);
+    void TryEnqueueMesh(FIntPoint C);
+    bool AllNeighborsGenerated(FIntPoint C) const;
+
+    void AddDesiredChunks(const FIntPoint& Center, int32 Radius, TSet<FIntPoint>& Out);
+    void GetChunksInRadius(const FIntPoint& Center, int32 Radius, TSet<FIntPoint>& Out);
 
     FIntPoint BlockToChunk(int32 BX, int32 BY) const
     {

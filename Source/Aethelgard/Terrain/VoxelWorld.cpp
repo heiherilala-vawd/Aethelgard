@@ -38,7 +38,6 @@ void AVoxelWorld::Init()
     Generator->Seed = Seed;
     Network->SetWorldSeed(Seed);
     ChunkManager->SetWorldGenerator(Generator);
-    ChunkManager->SetMeshGenerator(Mesher);
     ChunkManager->ViewDistance = ViewDistance;
     ChunkManager->OnChunkReadyForMesh.AddUObject(this, &AVoxelWorld::OnChunkReady);
     ChunkManager->OnChunkRemoved.AddUObject(this, &AVoxelWorld::OnChunkRemoved);
