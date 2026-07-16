@@ -14,29 +14,21 @@ class UGreedyMeshGenerator : public UVoxelMeshGenerator
 public:
     virtual void GenerateMesh(
         const FChunkData& ChunkData,
-        const TMap<FIntVector, TSharedPtr<FChunkData>>& Neighbors,
-        FMeshSectionData& OutMeshData) override;
+        const TMap<FIntPoint, TSharedPtr<FChunkData>>& Neighbors,
+        FMeshSectionData& OutMeshData,
+        float BlockScale = 100.0f) override;
 
 private:
-    void ProcessSlice(
-        const FChunkData& ChunkData,
-        const TMap<FIntVector, TSharedPtr<FChunkData>>& Neighbors,
-        int32 Axis,
-        int32 Direction,
-        int32 Layer,
-        FMeshSectionData& OutMeshData);
+    void ProcessAxis(const FChunkData& CD,
+        const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
+        int32 Axis, int32 Sign, int32 LayerCount,
+        FMeshSectionData& Out, float Scale);
 
-    EBlockId GetBlockAt(
-        const FChunkData& CenterChunk,
-        const TMap<FIntVector, TSharedPtr<FChunkData>>& Neighbors,
+    void AddQuad(FMeshSectionData& Out, FColor Color,
+        int32 Axis, int32 Sign, int32 Layer,
+        int32 U, int32 V, int32 W, int32 H, float Scale);
+
+    EBlockId GetBlock(const FChunkData& CD,
+        const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
         int32 X, int32 Y, int32 Z) const;
-
-    void AddQuad(
-        FMeshSectionData& MeshData,
-        FColor Color,
-        int32 Axis,
-        int32 Direction,
-        int32 Layer,
-        int32 U, int32 V,
-        int32 Width, int32 Height);
 };

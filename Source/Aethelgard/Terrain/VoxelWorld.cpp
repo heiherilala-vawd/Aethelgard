@@ -4,163 +4,140 @@
 #include "Terrain/WorldGeneratorComponent.h"
 #include "Terrain/ChunkManagerComponent.h"
 #include "Terrain/GreedyMeshGenerator.h"
-#include "Terrain/SurfaceNetsMeshGenerator.h"
-#include "Terrain/BiomeSystemComponent.h"
 #include "Terrain/NetworkSystemComponent.h"
-#include "Kismet/GameplayStatics.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogVoxelWorld, Log, All);
+#include "Terrain/SaveSystem.h"
+#include "ProceduralMeshComponent.h"
+#include "Materials/Material.h"
 
 AVoxelWorld::AVoxelWorld()
 {
     PrimaryActorTick.bCanEverTick = false;
     bReplicates = true;
 
-    WorldGenerator = CreateDefaultSubobject<UWorldGeneratorComponent>(TEXT("WorldGenerator"));
+    Generator = CreateDefaultSubobject<UWorldGeneratorComponent>(TEXT("Generator"));
     ChunkManager = CreateDefaultSubobject<UChunkManagerComponent>(TEXT("ChunkManager"));
-    BiomeSystem = CreateDefaultSubobject<UBiomeSystemComponent>(TEXT("BiomeSystem"));
-    GreedyGenerator = CreateDefaultSubobject<UGreedyMeshGenerator>(TEXT("GreedyGenerator"));
-    SurfaceNetsGenerator = CreateDefaultSubobject<USurfaceNetsMeshGenerator>(TEXT("SurfaceNetsGenerator"));
-    NetworkSystem = CreateDefaultSubobject<UNetworkSystemComponent>(TEXT("NetworkSystem"));
-}
+    Mesher = CreateDefaultSubobject<UGreedyMeshGenerator>(TEXT("Mesher"));
+    Network = CreateDefaultSubobject<UNetworkSystemComponent>(TEXT("Network"));
 
-void AVoxelWorld::InitializeWorld()
-{
-    if (bInitialized)
-        return;
-    bInitialized = true;
-
-    UE_LOG(LogVoxelWorld, Log, TEXT("=== VoxelWorld INIT - Seed: %d ==="), Seed);
-
-    WorldGenerator->Seed = Seed;
-    WorldGenerator->SetBiomeSystem(BiomeSystem);
-    BiomeSystem->SetSeed(Seed);
-    NetworkSystem->SetWorldSeed(Seed);
-
-    if (MeshType == EMeshGeneratorType::SurfaceNets)
-        ChunkManager->SetMeshGenerator(SurfaceNetsGenerator);
-    else
-        ChunkManager->SetMeshGenerator(GreedyGenerator);
-
-    ChunkManager->SetWorldGenerator(WorldGenerator);
-    ChunkManager->ViewDistance = ViewDistance;
-
-    NetworkSystem->OnBlockChangeReceived.AddUObject(this, &AVoxelWorld::OnNetworkBlockChange);
-
-    ChunkManager->UpdatePlayerPosition(FVector::ZeroVector);
-
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green,
-            FString::Printf(TEXT("VoxelWorld initialisé - Seed: %d"), Seed));
-    }
-}
-
-void AVoxelWorld::OnConstruction(const FTransform& Transform)
-{
-    Super::OnConstruction(Transform);
-    InitializeWorld();
+    MainMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MainMesh"));
+    SetRootComponent(MainMesh);
+    MainMesh->SetCastShadow(false);
+    MainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    MainMesh->bUseComplexAsSimpleCollision = false;
 }
 
 void AVoxelWorld::BeginPlay()
 {
     Super::BeginPlay();
-
-    UE_LOG(LogVoxelWorld, Log, TEXT("VoxelWorld::BeginPlay"));
-
-    InitializeWorld();
-
-    GetWorldTimerManager().SetTimer(UpdateTimerHandle, this, &AVoxelWorld::OnUpdateTimer, 0.25f, true);
+    Init();
+    GetWorldTimerManager().SetTimer(FollowTimer, this, &AVoxelWorld::TickFollowPlayer, 0.3f, true);
 }
 
-void AVoxelWorld::OnPlayerMove(const FVector& PlayerPosition)
+void AVoxelWorld::Init()
 {
-    ChunkManager->UpdatePlayerPosition(PlayerPosition);
+    Generator->Seed = Seed;
+    Network->SetWorldSeed(Seed);
+    ChunkManager->SetWorldGenerator(Generator);
+    ChunkManager->SetMeshGenerator(Mesher);
+    ChunkManager->ViewDistance = ViewDistance;
+    ChunkManager->OnChunkReadyForMesh.AddUObject(this, &AVoxelWorld::OnChunkReady);
+    ChunkManager->OnChunkRemoved.AddUObject(this, &AVoxelWorld::OnChunkRemoved);
+
+    UMaterialInterface* Mat = UMaterial::GetDefaultMaterial(MD_Surface);
+    if (Mat) MainMesh->SetMaterial(0, Mat);
 }
 
-EBlockId AVoxelWorld::GetBlock(int32 WorldX, int32 WorldY, int32 WorldZ) const
-{
-    return ChunkManager->GetBlock(WorldX, WorldY, WorldZ);
-}
+void AVoxelWorld::OnChunkReady(const FIntPoint& C) { BuildSection(C); }
 
-bool AVoxelWorld::SetBlock(int32 WorldX, int32 WorldY, int32 WorldZ, EBlockId Block)
+void AVoxelWorld::OnChunkRemoved(const FIntPoint& C)
 {
-    EBlockId OldBlock = GetBlock(WorldX, WorldY, WorldZ);
-    bool bResult = ChunkManager->SetBlock(WorldX, WorldY, WorldZ, Block);
-
-    if (bResult)
+    int32* SI = ActiveSections.Find(C);
+    if (SI)
     {
-        USaveSystem* SaveSystem = GetGameInstance()->GetSubsystem<USaveSystem>();
-        if (SaveSystem)
+        MainMesh->ClearMeshSection(*SI);
+        ActiveSections.Remove(C);
+    }
+}
+
+void AVoxelWorld::BuildSection(const FIntPoint& C)
+{
+    TSharedPtr<FChunkData> Center = ChunkManager->GetChunk(C);
+    if (!Center.IsValid() || !Center->bIsGenerated) return;
+
+    TMap<FIntPoint, TSharedPtr<FChunkData>> NB;
+    for (int32 DY = -1; DY <= 1; DY++)
+        for (int32 DX = -1; DX <= 1; DX++)
         {
-            SaveSystem->RecordModification(FIntVector(WorldX, WorldY, WorldZ), OldBlock, Block);
+            if (DX == 0 && DY == 0) continue;
+            FIntPoint N(C.X + DX, C.Y + DY);
+            auto D = ChunkManager->GetChunk(N);
+            if (D.IsValid() && D->bIsGenerated) NB.Add(N, D);
         }
-    }
 
-    return bResult;
-}
+    FMeshSectionData Mesh;
+    Mesher->GenerateMesh(*Center, NB, Mesh, BlockScale);
 
-void AVoxelWorld::SaveWorld(const FString& SlotName)
-{
-    USaveSystem* SaveSystem = GetGameInstance()->GetSubsystem<USaveSystem>();
-    if (SaveSystem)
+    FVector Offset((float)C.X * CHUNK_SIZE * BlockScale, (float)C.Y * CHUNK_SIZE * BlockScale, 0);
+    for (auto& V : Mesh.Vertices)
+        V += Offset;
+
+    int32* Existing = ActiveSections.Find(C);
+    if (Existing)
+        MainMesh->ClearMeshSection(*Existing);
+
+    if (Mesh.Vertices.Num() > 0)
     {
-        SaveSystem->SaveWorld(SlotName, Seed);
+        int32 SI = Existing ? *Existing : NextSection++;
+        if (!Existing) ActiveSections.Add(C, SI);
+        MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
+            Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
     }
 }
 
-void AVoxelWorld::LoadWorld(const FString& SlotName)
-{
-    USaveSystem* SaveSystem = GetGameInstance()->GetSubsystem<USaveSystem>();
-    if (!SaveSystem)
-        return;
-
-    int32 LoadedSeed = 0;
-    TArray<FChunkSaveData> Modifications;
-
-    if (SaveSystem->LoadWorld(SlotName, LoadedSeed, Modifications))
-    {
-        Seed = LoadedSeed;
-        InitializeWorld();
-        ChunkManager->UpdatePlayerPosition(FVector::ZeroVector);
-        ApplyModifications(Modifications);
-    }
-}
-
-void AVoxelWorld::ApplyModifications(const TArray<FChunkSaveData>& Modifications)
-{
-    for (const FChunkSaveData& ChunkData : Modifications)
-    {
-        for (const FBlockChange& Change : ChunkData.Changes)
-        {
-            int32 WX = ChunkData.Coord.X * CHUNK_SIZE + Change.LocalPos.X;
-            int32 WY = ChunkData.Coord.Y * CHUNK_SIZE + Change.LocalPos.Y;
-            int32 WZ = ChunkData.Coord.Z * CHUNK_SIZE + Change.LocalPos.Z;
-
-            ChunkManager->SetBlock(WX, WY, WZ, static_cast<EBlockId>(Change.NewBlockId));
-        }
-    }
-}
-
-void AVoxelWorld::OnNetworkBlockChange(int32 X, int32 Y, int32 Z, uint8 NewBlockId)
-{
-    EBlockId OldBlock = GetBlock(X, Y, Z);
-    EBlockId NewBlock = static_cast<EBlockId>(NewBlockId);
-
-    ChunkManager->SetBlock(X, Y, Z, NewBlock);
-
-    USaveSystem* SaveSystem = GetGameInstance()->GetSubsystem<USaveSystem>();
-    if (SaveSystem)
-    {
-        SaveSystem->RecordModification(FIntVector(X, Y, Z), OldBlock, NewBlock);
-    }
-}
-
-void AVoxelWorld::OnUpdateTimer()
+void AVoxelWorld::TickFollowPlayer()
 {
     APlayerController* PC = GetWorld()->GetFirstPlayerController();
     if (PC && PC->GetPawn())
     {
-        OnPlayerMove(PC->GetPawn()->GetActorLocation());
+        FVector Pos = PC->GetPawn()->GetActorLocation();
+        FIntPoint BlockCoord((int32)(Pos.X / BlockScale), (int32)(Pos.Y / BlockScale));
+        ChunkManager->UpdateCenter(BlockCoord);
+    }
+}
+
+EBlockId AVoxelWorld::GetBlock(int32 WX, int32 WY, int32 WZ) const
+{
+    return ChunkManager->GetBlock((int32)(WX / BlockScale), (int32)(WY / BlockScale), (int32)(WZ / BlockScale));
+}
+
+bool AVoxelWorld::SetBlock(int32 WX, int32 WY, int32 WZ, EBlockId B)
+{
+    return ChunkManager->SetBlock((int32)(WX / BlockScale), (int32)(WY / BlockScale), (int32)(WZ / BlockScale), B);
+}
+
+void AVoxelWorld::SaveWorld(const FString& Slot)
+{
+    USaveSystem* SS = GetGameInstance()->GetSubsystem<USaveSystem>();
+    if (SS) SS->SaveWorld(Slot, Seed);
+}
+
+void AVoxelWorld::LoadWorld(const FString& Slot)
+{
+    USaveSystem* SS = GetGameInstance()->GetSubsystem<USaveSystem>();
+    if (!SS) return;
+    int32 LS = 0;
+    TArray<FChunkSaveData> Mods;
+    if (SS->LoadWorld(Slot, LS, Mods))
+    {
+        Seed = LS;
+        Generator->Seed = LS;
+        Network->SetWorldSeed(LS);
+        for (const auto& Ch : Mods)
+            for (const auto& Chg : Ch.Changes)
+                ChunkManager->SetBlock(
+                    Ch.Coord.X * CHUNK_SIZE + Chg.LocalX,
+                    Ch.Coord.Y * CHUNK_SIZE + Chg.LocalY,
+                    Chg.LocalZ,
+                    static_cast<EBlockId>(Chg.NewBlockId));
     }
 }

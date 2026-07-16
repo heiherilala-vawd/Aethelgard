@@ -7,9 +7,11 @@
 #include "Terrain/ChunkData.h"
 #include "ChunkManagerComponent.generated.h"
 
-class AVoxelChunkActor;
 class UVoxelMeshGenerator;
 class UWorldGeneratorComponent;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnChunkReady, const FIntPoint&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnChunkRemoved, const FIntPoint&);
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
 class UChunkManagerComponent : public UActorComponent
@@ -19,36 +21,49 @@ class UChunkManagerComponent : public UActorComponent
 public:
     UChunkManagerComponent();
 
-    void SetWorldGenerator(UWorldGeneratorComponent* InGenerator) { WorldGenerator = InGenerator; }
-    void SetMeshGenerator(UVoxelMeshGenerator* InGenerator) { MeshGenerator = InGenerator; }
+    void SetWorldGenerator(UWorldGeneratorComponent* G) { Generator = G; }
+    void SetMeshGenerator(UVoxelMeshGenerator* G) { Mesher = G; }
 
     UPROPERTY(EditAnywhere, Category = "Chunks")
-    int32 ViewDistance = 8;
+    int32 ViewDistance = 4;
 
-    void UpdatePlayerPosition(const FVector& WorldPosition);
+    // All positions are in BLOCK coordinates (divide world units by BlockScale)
+    void UpdateCenter(const FIntPoint& CenterBlockCoord);
 
-    TSharedPtr<FChunkData> GetOrCreateChunkData(const FIntVector& Coord);
+    TSharedPtr<FChunkData> GetChunk(const FIntPoint& C) const;
+    EBlockId GetBlock(int32 BX, int32 BY, int32 BZ) const;
+    bool SetBlock(int32 BX, int32 BY, int32 BZ, EBlockId Block);
 
-    EBlockId GetBlock(int32 WorldX, int32 WorldY, int32 WorldZ) const;
-    bool SetBlock(int32 WorldX, int32 WorldY, int32 WorldZ, EBlockId Block);
+    virtual void TickComponent(float DT, ELevelTick T, FActorComponentTickFunction* F) override;
 
-    void RebuildChunkMesh(const FIntVector& Coord);
-
-    const TMap<FIntVector, TSharedPtr<FChunkData>>& GetAllChunkData() const { return AllChunks; }
+    FOnChunkReady OnChunkReadyForMesh;
+    FOnChunkRemoved OnChunkRemoved;
 
 private:
     UPROPERTY()
-    UWorldGeneratorComponent* WorldGenerator = nullptr;
+    UWorldGeneratorComponent* Generator = nullptr;
 
     UPROPERTY()
-    UVoxelMeshGenerator* MeshGenerator = nullptr;
+    UVoxelMeshGenerator* Mesher = nullptr;
 
-    TMap<FIntVector, TSharedPtr<FChunkData>> AllChunks;
-    TMap<FIntVector, TObjectPtr<AVoxelChunkActor>> ActiveChunkActors;
+    TMap<FIntPoint, TSharedPtr<FChunkData>> AllChunks;
+    TSet<FIntPoint> ActiveChunks;
 
-    void LoadChunk(const FIntVector& Coord);
-    void UnloadChunk(const FIntVector& Coord);
-    void RefreshNeighborMeshes(const FIntVector& Coord);
+    struct FPendingChunk
+    {
+        FIntPoint Coord;
+        bool bGenerate;
+    };
+    TQueue<FPendingChunk> PendingQueue;
 
-    FIntVector WorldToChunkCoord(int32 WorldX, int32 WorldY, int32 WorldZ) const;
+    void GenerateAndMesh(const FIntPoint& C);
+    void RemoveChunk(const FIntPoint& C);
+
+    FIntPoint BlockToChunk(int32 BX, int32 BY) const
+    {
+        return FIntPoint(
+            (BX >= 0 ? BX : BX - CHUNK_SIZE + 1) / CHUNK_SIZE,
+            (BY >= 0 ? BY : BY - CHUNK_SIZE + 1) / CHUNK_SIZE
+        );
+    }
 };

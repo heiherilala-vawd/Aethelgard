@@ -10,13 +10,14 @@ void USaveSystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void USaveSystem::RecordModification(const FIntVector& WorldPos, EBlockId OldBlock, EBlockId NewBlock)
 {
-    FIntVector ChunkCoord = WorldToChunkCoord(WorldPos.X, WorldPos.Y, WorldPos.Z);
-    int32 LX = WorldToLocal(WorldPos.X, ChunkCoord.X);
-    int32 LY = WorldToLocal(WorldPos.Y, ChunkCoord.Y);
-    int32 LZ = WorldToLocal(WorldPos.Z, ChunkCoord.Z);
+    FIntPoint ChunkCoord = WorldToChunkCoord(WorldPos.X, WorldPos.Y);
+    int32 LX = WorldPos.X - ChunkCoord.X * CHUNK_SIZE;
+    int32 LY = WorldPos.Y - ChunkCoord.Y * CHUNK_SIZE;
 
     FBlockChange Change;
-    Change.LocalPos = FIntVector(LX, LY, LZ);
+    Change.LocalX = LX;
+    Change.LocalY = LY;
+    Change.LocalZ = WorldPos.Z;
     Change.OldBlockId = static_cast<uint8>(OldBlock);
     Change.NewBlockId = static_cast<uint8>(NewBlock);
 
@@ -25,11 +26,11 @@ void USaveSystem::RecordModification(const FIntVector& WorldPos, EBlockId OldBlo
     bool bFound = false;
     for (int32 i = 0; i < ChunkChanges.Num(); i++)
     {
-        FBlockChange& Existing = ChunkChanges[i];
-        if (Existing.LocalPos == Change.LocalPos)
+        FBlockChange& Ex = ChunkChanges[i];
+        if (Ex.LocalX == LX && Ex.LocalY == LY && Ex.LocalZ == WorldPos.Z)
         {
-            Existing.NewBlockId = Change.NewBlockId;
-            if (Existing.OldBlockId == Change.NewBlockId)
+            Ex.NewBlockId = Change.NewBlockId;
+            if (Ex.OldBlockId == Change.NewBlockId)
             {
                 ChunkChanges.RemoveAtSwap(i, 1, EAllowShrinking::No);
             }
@@ -38,10 +39,7 @@ void USaveSystem::RecordModification(const FIntVector& WorldPos, EBlockId OldBlo
         }
     }
 
-    if (!bFound)
-    {
-        ChunkChanges.Add(Change);
-    }
+    if (!bFound) ChunkChanges.Add(Change);
 
     OnBlockModified.Broadcast(WorldPos, OldBlock, NewBlock);
 }
@@ -49,11 +47,8 @@ void USaveSystem::RecordModification(const FIntVector& WorldPos, EBlockId OldBlo
 bool USaveSystem::SaveWorld(const FString& InSlotName, int32 WorldSeed)
 {
     UWorldSaveData* SaveData = Cast<UWorldSaveData>(
-        UGameplayStatics::CreateSaveGameObject(UWorldSaveData::StaticClass())
-    );
-
-    if (!SaveData)
-        return false;
+        UGameplayStatics::CreateSaveGameObject(UWorldSaveData::StaticClass()));
+    if (!SaveData) return false;
 
     SaveData->WorldSeed = WorldSeed;
     SaveData->SlotName = InSlotName;
@@ -75,58 +70,41 @@ bool USaveSystem::SaveWorld(const FString& InSlotName, int32 WorldSeed)
 
 bool USaveSystem::LoadWorld(const FString& InSlotName, int32& OutWorldSeed, TArray<FChunkSaveData>& OutChunks)
 {
-    if (!UGameplayStatics::DoesSaveGameExist(InSlotName, 0))
-        return false;
+    if (!UGameplayStatics::DoesSaveGameExist(InSlotName, 0)) return false;
 
     UWorldSaveData* SaveData = Cast<UWorldSaveData>(
-        UGameplayStatics::LoadGameFromSlot(InSlotName, 0)
-    );
-
-    if (!SaveData)
-        return false;
+        UGameplayStatics::LoadGameFromSlot(InSlotName, 0));
+    if (!SaveData) return false;
 
     OutWorldSeed = SaveData->WorldSeed;
     OutChunks = SaveData->ModifiedChunks;
 
     PendingChanges.Empty();
     for (const FChunkSaveData& ChunkData : OutChunks)
-    {
         PendingChanges.Add(ChunkData.Coord, ChunkData.Changes);
-    }
 
     return true;
 }
 
 bool USaveSystem::IsBlockModified(int32 WorldX, int32 WorldY, int32 WorldZ) const
 {
-    FIntVector ChunkCoord = WorldToChunkCoord(WorldX, WorldY, WorldZ);
-    int32 LX = WorldToLocal(WorldX, ChunkCoord.X);
-    int32 LY = WorldToLocal(WorldY, ChunkCoord.Y);
-    int32 LZ = WorldToLocal(WorldZ, ChunkCoord.Z);
+    FIntPoint ChunkCoord = WorldToChunkCoord(WorldX, WorldY);
+    int32 LX = WorldX - ChunkCoord.X * CHUNK_SIZE;
+    int32 LY = WorldY - ChunkCoord.Y * CHUNK_SIZE;
 
     const TArray<FBlockChange>* ChunkChanges = PendingChanges.Find(ChunkCoord);
-    if (!ChunkChanges)
-        return false;
+    if (!ChunkChanges) return false;
 
-    for (const FBlockChange& Change : *ChunkChanges)
-    {
-        if (Change.LocalPos == FIntVector(LX, LY, LZ))
+    for (const FBlockChange& C : *ChunkChanges)
+        if (C.LocalX == LX && C.LocalY == LY && C.LocalZ == WorldZ)
             return true;
-    }
-
     return false;
 }
 
-FIntVector USaveSystem::WorldToChunkCoord(int32 X, int32 Y, int32 Z) const
+FIntPoint USaveSystem::WorldToChunkCoord(int32 X, int32 Y) const
 {
-    return FIntVector(
+    return FIntPoint(
         FMath::FloorToInt((float)X / CHUNK_SIZE),
-        FMath::FloorToInt((float)Y / CHUNK_SIZE),
-        FMath::FloorToInt((float)Z / CHUNK_SIZE)
+        FMath::FloorToInt((float)Y / CHUNK_SIZE)
     );
-}
-
-int32 USaveSystem::WorldToLocal(int32 WorldCoord, int32 ChunkCoord) const
-{
-    return WorldCoord - ChunkCoord * CHUNK_SIZE;
 }

@@ -5,22 +5,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Terrain/BlockRegistry.h"
-#include "Terrain/SaveSystem.h"
 #include "VoxelWorld.generated.h"
 
 class UChunkManagerComponent;
 class UWorldGeneratorComponent;
 class UGreedyMeshGenerator;
-class USurfaceNetsMeshGenerator;
-class UBiomeSystemComponent;
 class UNetworkSystemComponent;
-
-UENUM()
-enum class EMeshGeneratorType : uint8
-{
-    Greedy      UMETA(DisplayName = "Greedy Meshing"),
-    SurfaceNets UMETA(DisplayName = "Surface Nets (Smooth)")
-};
+class UProceduralMeshComponent;
 
 UCLASS(Placeable)
 class AVoxelWorld : public AActor
@@ -37,54 +28,43 @@ public:
     int32 ViewDistance = 4;
 
     UPROPERTY(EditAnywhere, Category = "World")
-    EMeshGeneratorType MeshType = EMeshGeneratorType::SurfaceNets;
+    float BlockScale = 100.0f;
 
-    void OnPlayerMove(const FVector& PlayerPosition);
-
-    UFUNCTION(BlueprintCallable, Category = "Voxel")
-    EBlockId GetBlock(int32 WorldX, int32 WorldY, int32 WorldZ) const;
-
-    UFUNCTION(BlueprintCallable, Category = "Voxel")
-    bool SetBlock(int32 WorldX, int32 WorldY, int32 WorldZ, EBlockId Block);
-
-    UFUNCTION(BlueprintCallable, Category = "Save")
-    void SaveWorld(const FString& SlotName);
-
-    UFUNCTION(BlueprintCallable, Category = "Save")
-    void LoadWorld(const FString& SlotName);
+    EBlockId GetBlock(int32 WX, int32 WY, int32 WZ) const;
+    bool SetBlock(int32 WX, int32 WY, int32 WZ, EBlockId B);
+    void SaveWorld(const FString& Slot);
+    void LoadWorld(const FString& Slot);
 
     UChunkManagerComponent* GetChunkManager() const { return ChunkManager; }
-    UWorldGeneratorComponent* GetWorldGenerator() const { return WorldGenerator; }
-    UNetworkSystemComponent* GetNetworkSystem() const { return NetworkSystem; }
+    UWorldGeneratorComponent* GetWorldGenerator() const { return Generator; }
 
-    virtual void OnConstruction(const FTransform& Transform) override;
     virtual void BeginPlay() override;
 
 protected:
-    UPROPERTY(VisibleAnywhere, Category = "Terrain")
-    UWorldGeneratorComponent* WorldGenerator;
+    UPROPERTY(VisibleAnywhere)
+    UWorldGeneratorComponent* Generator;
 
-    UPROPERTY(VisibleAnywhere, Category = "Terrain")
+    UPROPERTY(VisibleAnywhere)
     UChunkManagerComponent* ChunkManager;
 
-    UPROPERTY(VisibleAnywhere, Category = "Terrain")
-    UBiomeSystemComponent* BiomeSystem;
+    UPROPERTY(VisibleAnywhere)
+    UGreedyMeshGenerator* Mesher;
 
-    UPROPERTY(VisibleAnywhere, Category = "Terrain")
-    UGreedyMeshGenerator* GreedyGenerator;
+    UPROPERTY(VisibleAnywhere)
+    UNetworkSystemComponent* Network;
 
-    UPROPERTY(VisibleAnywhere, Category = "Terrain")
-    USurfaceNetsMeshGenerator* SurfaceNetsGenerator;
-
-    UPROPERTY(VisibleAnywhere, Category = "Network")
-    UNetworkSystemComponent* NetworkSystem;
-
-    FTimerHandle UpdateTimerHandle;
+    UPROPERTY()
+    UProceduralMeshComponent* MainMesh;
 
 private:
-    bool bInitialized = false;
-    void InitializeWorld();
-    void OnUpdateTimer();
-    void ApplyModifications(const TArray<FChunkSaveData>& Modifications);
-    void OnNetworkBlockChange(int32 X, int32 Y, int32 Z, uint8 NewBlockId);
+    void Init();
+    void OnChunkReady(const FIntPoint& C);
+    void OnChunkRemoved(const FIntPoint& C);
+    void BuildSection(const FIntPoint& C);
+    void TickFollowPlayer();
+
+    TMap<FIntPoint, int32> ActiveSections;
+    int32 NextSection = 0;
+
+    FTimerHandle FollowTimer;
 };

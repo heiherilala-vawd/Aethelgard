@@ -14,7 +14,13 @@ struct FBlockChange
     GENERATED_BODY()
 
     UPROPERTY()
-    FIntVector LocalPos;
+    int32 LocalX = 0;
+
+    UPROPERTY()
+    int32 LocalY = 0;
+
+    UPROPERTY()
+    int32 LocalZ = 0;
 
     UPROPERTY()
     uint8 OldBlockId = 0;
@@ -29,7 +35,7 @@ struct FChunkSaveData
     GENERATED_BODY()
 
     UPROPERTY()
-    FIntVector Coord;
+    FIntPoint Coord;
 
     UPROPERTY()
     TArray<FBlockChange> Changes;
@@ -65,18 +71,14 @@ public:
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
     void RecordModification(const FIntVector& WorldPos, EBlockId OldBlock, EBlockId NewBlock);
-
     bool SaveWorld(const FString& InSlotName, int32 WorldSeed);
-
     bool LoadWorld(const FString& InSlotName, int32& OutWorldSeed, TArray<FChunkSaveData>& OutChunks);
 
     FOnBlockModified OnBlockModified;
-
     bool IsBlockModified(int32 WorldX, int32 WorldY, int32 WorldZ) const;
 
 private:
-    TMap<FIntVector, TArray<FBlockChange>> PendingChanges;
+    TMap<FIntPoint, TArray<FBlockChange>> PendingChanges;
 
-    FIntVector WorldToChunkCoord(int32 X, int32 Y, int32 Z) const;
-    int32 WorldToLocal(int32 WorldCoord, int32 ChunkCoord) const;
+    FIntPoint WorldToChunkCoord(int32 X, int32 Y) const;
 };

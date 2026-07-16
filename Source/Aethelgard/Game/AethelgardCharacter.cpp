@@ -51,12 +51,13 @@ void AAethelgardCharacter::BeginPlay()
         AVoxelWorld* VoxelWorld = GM->GetVoxelWorld();
         if (VoxelWorld && VoxelWorld->GetWorldGenerator())
         {
+            float BS = VoxelWorld->BlockScale;
             FVector Loc = GetActorLocation();
             float TerrainH = VoxelWorld->GetWorldGenerator()->GetHeight(
-                FMath::FloorToInt(Loc.X),
-                FMath::FloorToInt(Loc.Y)
+                FMath::FloorToInt(Loc.X / BS),
+                FMath::FloorToInt(Loc.Y / BS)
             );
-            Loc.Z = FMath::Max(TerrainH + 200.0f, 200.0f);
+            Loc.Z = TerrainH * BS + 2.0f * BS;
             SetActorLocation(Loc);
         }
     }

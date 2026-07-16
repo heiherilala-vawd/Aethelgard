@@ -1,227 +1,107 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Terrain/ChunkManagerComponent.h"
-#include "Terrain/ChunkActor.h"
 #include "Terrain/WorldGeneratorComponent.h"
-#include "Terrain/GreedyMeshGenerator.h"
-#include "Engine/World.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogChunkManager, Log, All);
 
 UChunkManagerComponent::UChunkManagerComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 
-void UChunkManagerComponent::UpdatePlayerPosition(const FVector& WorldPosition)
+void UChunkManagerComponent::UpdateCenter(const FIntPoint& CenterBlock)
 {
-    FIntVector PlayerChunk(
-        FMath::FloorToInt(WorldPosition.X / CHUNK_SIZE),
-        FMath::FloorToInt(WorldPosition.Y / CHUNK_SIZE),
-        FMath::FloorToInt(WorldPosition.Z / CHUNK_SIZE)
-    );
-
-    TSet<FIntVector> DesiredChunks;
-    for (int32 DZ = -ViewDistance; DZ <= ViewDistance; DZ++)
-    {
-        for (int32 DY = -ViewDistance; DY <= ViewDistance; DY++)
+    TSet<FIntPoint> Desired;
+    for (int32 DY = -ViewDistance; DY <= ViewDistance; DY++)
+        for (int32 DX = -ViewDistance; DX <= ViewDistance; DX++)
         {
-            for (int32 DX = -ViewDistance; DX <= ViewDistance; DX++)
-            {
-                int32 DistSq = DX * DX + DY * DY + DZ * DZ;
-                if (DistSq <= ViewDistance * ViewDistance)
-                {
-                    DesiredChunks.Add(FIntVector(
-                        PlayerChunk.X + DX,
-                        PlayerChunk.Y + DY,
-                        PlayerChunk.Z + DZ
-                    ));
-                }
-            }
-        }
-    }
-
-    TArray<FIntVector> ToUnload;
-    for (const auto& Pair : ActiveChunkActors)
-    {
-        if (!DesiredChunks.Contains(Pair.Key))
-        {
-            ToUnload.Add(Pair.Key);
-        }
-    }
-
-    for (const FIntVector& Coord : ToUnload)
-    {
-        UnloadChunk(Coord);
-    }
-
-    for (const FIntVector& Coord : DesiredChunks)
-    {
-        if (!ActiveChunkActors.Contains(Coord))
-        {
-            LoadChunk(Coord);
-        }
-    }
-}
-
-void UChunkManagerComponent::LoadChunk(const FIntVector& Coord)
-{
-    if (!WorldGenerator || !MeshGenerator)
-        return;
-
-    TSharedPtr<FChunkData> ChunkData = GetOrCreateChunkData(Coord);
-    if (!ChunkData->bIsGenerated)
-    {
-        WorldGenerator->GenerateChunk(*ChunkData);
-    }
-
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-    FVector WorldPos(
-        (float)(Coord.X * CHUNK_SIZE),
-        (float)(Coord.Y * CHUNK_SIZE),
-        (float)(Coord.Z * CHUNK_SIZE)
-    );
-
-    AVoxelChunkActor* ChunkActor = GetWorld()->SpawnActor<AVoxelChunkActor>(WorldPos, FRotator::ZeroRotator, SpawnParams);
-    if (ChunkActor)
-    {
-        UE_LOG(LogChunkManager, Log, TEXT("  Loaded chunk (%d, %d, %d)"), Coord.X, Coord.Y, Coord.Z);
-        ChunkActor->SetChunkData(ChunkData);
-        ActiveChunkActors.Add(Coord, ChunkActor);
-
-        TMap<FIntVector, TSharedPtr<FChunkData>> Neighbors;
-        for (int32 DZ = -1; DZ <= 1; DZ++)
-        {
-            for (int32 DY = -1; DY <= 1; DY++)
-            {
-                for (int32 DX = -1; DX <= 1; DX++)
-                {
-                    if (DX == 0 && DY == 0 && DZ == 0)
-                        continue;
-                    FIntVector NCoord(Coord.X + DX, Coord.Y + DY, Coord.Z + DZ);
-                    TSharedPtr<FChunkData>* NP = AllChunks.Find(NCoord);
-                    if (NP && NP->IsValid())
-                    {
-                        Neighbors.Add(NCoord, *NP);
-                    }
-                }
-            }
+            if (DX * DX + DY * DY <= ViewDistance * ViewDistance)
+                Desired.Add(FIntPoint(CenterBlock.X / CHUNK_SIZE + DX, CenterBlock.Y / CHUNK_SIZE + DY));
         }
 
-        ChunkActor->UpdateMesh(MeshGenerator, Neighbors);
-    }
-}
+    TArray<FIntPoint> ToRemove;
+    for (const FIntPoint& C : ActiveChunks)
+        if (!Desired.Contains(C))
+            ToRemove.Add(C);
 
-void UChunkManagerComponent::UnloadChunk(const FIntVector& Coord)
-{
-    TObjectPtr<AVoxelChunkActor>* ActorPtr = ActiveChunkActors.Find(Coord);
-    if (ActorPtr && *ActorPtr)
+    for (const FIntPoint& C : ToRemove)
     {
-        (*ActorPtr)->Destroy();
+        PendingQueue.Enqueue({C, false});
+        ActiveChunks.Remove(C);
     }
-    ActiveChunkActors.Remove(Coord);
+
+    for (const FIntPoint& C : Desired)
+        if (!ActiveChunks.Contains(C))
+        {
+            PendingQueue.Enqueue({C, true});
+            ActiveChunks.Add(C);
+        }
 }
 
-TSharedPtr<FChunkData> UChunkManagerComponent::GetOrCreateChunkData(const FIntVector& Coord)
+void UChunkManagerComponent::TickComponent(float DT, ELevelTick T, FActorComponentTickFunction* F)
 {
-    TSharedPtr<FChunkData>* Existing = AllChunks.Find(Coord);
-    if (Existing)
-        return *Existing;
+    Super::TickComponent(DT, T, F);
 
-    TSharedPtr<FChunkData> NewData = MakeShared<FChunkData>();
-    NewData->Initialize(Coord);
-    AllChunks.Add(Coord, NewData);
-    return NewData;
+    for (int32 i = 0; i < 3; i++)
+    {
+        FPendingChunk P;
+        if (!PendingQueue.Dequeue(P)) break;
+
+        if (P.bGenerate)
+            GenerateAndMesh(P.Coord);
+        else
+            RemoveChunk(P.Coord);
+    }
 }
 
-EBlockId UChunkManagerComponent::GetBlock(int32 WorldX, int32 WorldY, int32 WorldZ) const
+void UChunkManagerComponent::GenerateAndMesh(const FIntPoint& C)
 {
-    FIntVector Coord = WorldToChunkCoord(WorldX, WorldY, WorldZ);
-    const TSharedPtr<FChunkData>* Data = AllChunks.Find(Coord);
-    if (!Data || !Data->IsValid() || !(*Data)->bIsGenerated)
-        return EBlockId::Air;
+    if (!Generator || !Mesher) return;
 
-    int32 LX = WorldX - Coord.X * CHUNK_SIZE;
-    int32 LY = WorldY - Coord.Y * CHUNK_SIZE;
-    int32 LZ = WorldZ - Coord.Z * CHUNK_SIZE;
+    TSharedPtr<FChunkData>* Existing = AllChunks.Find(C);
+    TSharedPtr<FChunkData> Data;
+    if (Existing && Existing->IsValid())
+        Data = *Existing;
+    else
+    {
+        Data = MakeShared<FChunkData>();
+        Data->Initialize(C);
+        AllChunks.Add(C, Data);
+    }
 
-    return (*Data)->GetBlock(LX, LY, LZ);
+    if (!Data->bIsGenerated)
+        Generator->GenerateChunk(*Data);
+
+    OnChunkReadyForMesh.Broadcast(C);
 }
 
-bool UChunkManagerComponent::SetBlock(int32 WorldX, int32 WorldY, int32 WorldZ, EBlockId Block)
+void UChunkManagerComponent::RemoveChunk(const FIntPoint& C)
 {
-    FIntVector Coord = WorldToChunkCoord(WorldX, WorldY, WorldZ);
-    TSharedPtr<FChunkData>* Data = AllChunks.Find(Coord);
-    if (!Data || !Data->IsValid())
-        return false;
+    AllChunks.Remove(C);
+    OnChunkRemoved.Broadcast(C);
+}
 
-    int32 LX = WorldX - Coord.X * CHUNK_SIZE;
-    int32 LY = WorldY - Coord.Y * CHUNK_SIZE;
-    int32 LZ = WorldZ - Coord.Z * CHUNK_SIZE;
+TSharedPtr<FChunkData> UChunkManagerComponent::GetChunk(const FIntPoint& C) const
+{
+    const auto* Found = AllChunks.Find(C);
+    return Found ? *Found : nullptr;
+}
 
-    (*Data)->SetBlock(LX, LY, LZ, Block);
+EBlockId UChunkManagerComponent::GetBlock(int32 BX, int32 BY, int32 BZ) const
+{
+    FIntPoint C = BlockToChunk(BX, BY);
+    auto* D = AllChunks.Find(C);
+    if (!D || !D->IsValid() || !(*D)->bIsGenerated) return EBlockId::Air;
+    return (*D)->GetBlock(BX - C.X * CHUNK_SIZE, BY - C.Y * CHUNK_SIZE, BZ);
+}
 
-    RebuildChunkMesh(Coord);
-    RefreshNeighborMeshes(Coord);
+bool UChunkManagerComponent::SetBlock(int32 BX, int32 BY, int32 BZ, EBlockId Block)
+{
+    FIntPoint C = BlockToChunk(BX, BY);
+    auto* D = AllChunks.Find(C);
+    if (!D || !D->IsValid()) return false;
 
+    (*D)->SetBlock(BX - C.X * CHUNK_SIZE, BY - C.Y * CHUNK_SIZE, BZ, Block);
+    OnChunkReadyForMesh.Broadcast(C);
     return true;
-}
-
-void UChunkManagerComponent::RebuildChunkMesh(const FIntVector& Coord)
-{
-    TObjectPtr<AVoxelChunkActor>* ActorPtr = ActiveChunkActors.Find(Coord);
-    if (!ActorPtr || !*ActorPtr || !MeshGenerator)
-        return;
-
-    TMap<FIntVector, TSharedPtr<FChunkData>> Neighbors;
-    for (int32 DZ = -1; DZ <= 1; DZ++)
-    {
-        for (int32 DY = -1; DY <= 1; DY++)
-        {
-            for (int32 DX = -1; DX <= 1; DX++)
-            {
-                if (DX == 0 && DY == 0 && DZ == 0)
-                    continue;
-                FIntVector NCoord(Coord.X + DX, Coord.Y + DY, Coord.Z + DZ);
-                TSharedPtr<FChunkData>* NP = AllChunks.Find(NCoord);
-                if (NP && NP->IsValid())
-                {
-                    Neighbors.Add(NCoord, *NP);
-                }
-            }
-        }
-    }
-
-    (*ActorPtr)->UpdateMesh(MeshGenerator, Neighbors);
-}
-
-void UChunkManagerComponent::RefreshNeighborMeshes(const FIntVector& Coord)
-{
-    for (int32 DZ = -1; DZ <= 1; DZ++)
-    {
-        for (int32 DY = -1; DY <= 1; DY++)
-        {
-            for (int32 DX = -1; DX <= 1; DX++)
-            {
-                if (DX == 0 && DY == 0 && DZ == 0)
-                    continue;
-                FIntVector NCoord(Coord.X + DX, Coord.Y + DY, Coord.Z + DZ);
-                if (ActiveChunkActors.Contains(NCoord))
-                {
-                    RebuildChunkMesh(NCoord);
-                }
-            }
-        }
-    }
-}
-
-FIntVector UChunkManagerComponent::WorldToChunkCoord(int32 WorldX, int32 WorldY, int32 WorldZ) const
-{
-    return FIntVector(
-        FMath::FloorToInt((float)WorldX / CHUNK_SIZE),
-        FMath::FloorToInt((float)WorldY / CHUNK_SIZE),
-        FMath::FloorToInt((float)WorldZ / CHUNK_SIZE)
-    );
 }

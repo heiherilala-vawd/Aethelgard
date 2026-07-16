@@ -35,6 +35,7 @@ class UVoxelMeshGenerator : public UObject
 public:
     virtual void GenerateMesh(
         const FChunkData& ChunkData,
-        const TMap<FIntVector, TSharedPtr<FChunkData>>& Neighbors,
-        FMeshSectionData& OutMeshData) PURE_VIRTUAL(UVoxelMeshGenerator::GenerateMesh, );
+        const TMap<FIntPoint, TSharedPtr<FChunkData>>& Neighbors,
+        FMeshSectionData& OutMeshData,
+        float BlockScale = 100.0f) PURE_VIRTUAL(UVoxelMeshGenerator::GenerateMesh, );
 };
