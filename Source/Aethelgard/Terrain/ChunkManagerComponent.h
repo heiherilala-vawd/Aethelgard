@@ -5,10 +5,8 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Terrain/ChunkData.h"
+#include "Terrain/WorldGeneratorComponent.h"
 #include "ChunkManagerComponent.generated.h"
-
-class UVoxelMeshGenerator;
-class UWorldGeneratorComponent;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnChunkReady, const FIntPoint&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnChunkRemoved, const FIntPoint&);
@@ -26,7 +24,6 @@ public:
     UPROPERTY(EditAnywhere, Category = "Chunks")
     int32 ViewDistance = 4;
 
-    // All positions in BLOCK coordinates
     void UpdateCenter(const FIntPoint& CenterBlock);
 
     TSharedPtr<FChunkData> GetChunk(const FIntPoint& C) const;
@@ -43,19 +40,21 @@ private:
     UWorldGeneratorComponent* Generator = nullptr;
 
     TMap<FIntPoint, TSharedPtr<FChunkData>> AllChunks;
-    TSet<FIntPoint> GeneratingChunks;
-    TSet<FIntPoint> MeshReadyChunks;
 
-    TArray<FIntPoint> PendingGeneration;
-    TArray<FIntPoint> PendingRemoval;
+    TArray<FIntPoint> GenQueue;
+    TArray<FIntPoint> MeshQueue;
 
-    void GenerateOne(FIntPoint C);
-    void RemoveOne(FIntPoint C);
-    void TryEnqueueMesh(FIntPoint C);
-    bool AllNeighborsGenerated(FIntPoint C) const;
+    int32 ActiveGenTasks = 0;
+    static constexpr int32 MaxActiveGen = 6;
 
-    void AddDesiredChunks(const FIntPoint& Center, int32 Radius, TSet<FIntPoint>& Out);
-    void GetChunksInRadius(const FIntPoint& Center, int32 Radius, TSet<FIntPoint>& Out);
+    void LaunchGen(FIntPoint C);
+    void OnGenComplete(FIntPoint C, TSharedPtr<FChunkData> D);
+    void TryMesh(FIntPoint C);
+    bool AllNeighborsReady(FIntPoint C) const;
+    void EnqueueGen(const FIntPoint& C);
+    void EnqueueMesh(const FIntPoint& C);
+
+    void DesiredCoords(const FIntPoint& Center, int32 R, TArray<FIntPoint>& Out) const;
 
     FIntPoint BlockToChunk(int32 BX, int32 BY) const
     {

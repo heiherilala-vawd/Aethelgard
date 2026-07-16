@@ -8,6 +8,7 @@
 #include "Terrain/SaveSystem.h"
 #include "ProceduralMeshComponent.h"
 #include "Materials/Material.h"
+#include "Async/Async.h"
 
 AVoxelWorld::AVoxelWorld()
 {
@@ -24,6 +25,9 @@ AVoxelWorld::AVoxelWorld()
     MainMesh->SetCastShadow(false);
     MainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     MainMesh->bUseComplexAsSimpleCollision = false;
+
+    UMaterialInterface* Mat = UMaterial::GetDefaultMaterial(MD_Surface);
+    if (Mat) MainMesh->SetMaterial(0, Mat);
 }
 
 void AVoxelWorld::BeginPlay()
@@ -41,12 +45,12 @@ void AVoxelWorld::Init()
     ChunkManager->ViewDistance = ViewDistance;
     ChunkManager->OnChunkReadyForMesh.AddUObject(this, &AVoxelWorld::OnChunkReady);
     ChunkManager->OnChunkRemoved.AddUObject(this, &AVoxelWorld::OnChunkRemoved);
-
-    UMaterialInterface* Mat = UMaterial::GetDefaultMaterial(MD_Surface);
-    if (Mat) MainMesh->SetMaterial(0, Mat);
 }
 
-void AVoxelWorld::OnChunkReady(const FIntPoint& C) { BuildSection(C); }
+void AVoxelWorld::OnChunkReady(const FIntPoint& C)
+{
+    BuildSection(C);
+}
 
 void AVoxelWorld::OnChunkRemoved(const FIntPoint& C)
 {
@@ -56,6 +60,16 @@ void AVoxelWorld::OnChunkRemoved(const FIntPoint& C)
         MainMesh->ClearMeshSection(*SI);
         ActiveSections.Remove(C);
     }
+}
+
+int32 AVoxelWorld::GetOrCreateSection(const FIntPoint& C)
+{
+    int32* Existing = ActiveSections.Find(C);
+    if (Existing) return *Existing;
+
+    int32 SI = NextSection++;
+    ActiveSections.Add(C, SI);
+    return SI;
 }
 
 void AVoxelWorld::BuildSection(const FIntPoint& C)
@@ -73,23 +87,51 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
             if (D.IsValid() && D->bIsGenerated) NB.Add(N, D);
         }
 
-    FMeshSectionData Mesh;
-    Mesher->GenerateMesh(*Center, NB, Mesh, BlockScale);
+    float Scale = BlockScale;
+    UVoxelMeshGenerator* Gen = Mesher;
 
-    FVector Offset((float)C.X * CHUNK_SIZE * BlockScale, (float)C.Y * CHUNK_SIZE * BlockScale, 0);
-    for (auto& V : Mesh.Vertices)
-        V += Offset;
-
-    int32* Existing = ActiveSections.Find(C);
-    if (Existing)
-        MainMesh->ClearMeshSection(*Existing);
-
-    if (Mesh.Vertices.Num() > 0)
+    // Async mesh generation on thread pool
+    Async(EAsyncExecution::ThreadPool, [this, C, Center, NB, Scale, Gen]()
     {
-        int32 SI = Existing ? *Existing : NextSection++;
-        if (!Existing) ActiveSections.Add(C, SI);
-        MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
-            Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
+        FMeshSectionData Mesh;
+        Gen->GenerateMesh(*Center, NB, Mesh, Scale);
+
+        FVector Offset((float)C.X * CHUNK_SIZE * Scale, (float)C.Y * CHUNK_SIZE * Scale, 0);
+        for (auto& V : Mesh.Vertices)
+            V += Offset;
+
+        // Dispatch back to game thread
+        AsyncTask(ENamedThreads::GameThread, [this, C, Mesh = MoveTemp(Mesh)]()
+        {
+            if (!MainMesh || !IsValid(this)) return;
+
+            if (ActiveSections.Contains(C))
+            {
+                int32 SI = ActiveSections[C];
+                MainMesh->ClearMeshSection(SI);
+                if (Mesh.Vertices.Num() > 0)
+                    MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
+                        Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
+            }
+            else
+            {
+                int32 SI = NextSection++;
+                ActiveSections.Add(C, SI);
+                if (Mesh.Vertices.Num() > 0)
+                    MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
+                        Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
+            }
+        });
+    });
+}
+
+void AVoxelWorld::ClearSection(const FIntPoint& C)
+{
+    int32* SI = ActiveSections.Find(C);
+    if (SI)
+    {
+        MainMesh->ClearMeshSection(*SI);
+        ActiveSections.Remove(C);
     }
 }
 
@@ -99,8 +141,8 @@ void AVoxelWorld::TickFollowPlayer()
     if (PC && PC->GetPawn())
     {
         FVector Pos = PC->GetPawn()->GetActorLocation();
-        FIntPoint BlockCoord((int32)(Pos.X / BlockScale), (int32)(Pos.Y / BlockScale));
-        ChunkManager->UpdateCenter(BlockCoord);
+        FIntPoint BC((int32)(Pos.X / BlockScale), (int32)(Pos.Y / BlockScale));
+        ChunkManager->UpdateCenter(BC);
     }
 }
 

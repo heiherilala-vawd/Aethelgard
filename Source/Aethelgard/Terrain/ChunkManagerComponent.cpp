@@ -1,9 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Terrain/ChunkManagerComponent.h"
-#include "Terrain/WorldGeneratorComponent.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogChunkMgr, Log, All);
+#include "Async/Async.h"
 
 UChunkManagerComponent::UChunkManagerComponent()
 {
@@ -13,143 +11,131 @@ UChunkManagerComponent::UChunkManagerComponent()
 
 void UChunkManagerComponent::UpdateCenter(const FIntPoint& CenterBlock)
 {
-    int32 GenRadius = ViewDistance + 1;
-    int32 MeshRadius = ViewDistance;
+    TArray<FIntPoint> Desired, DesiredMesh;
+    DesiredCoords(CenterBlock, ViewDistance + 1, Desired);
 
-    TSet<FIntPoint> DesiredGen;
-    TSet<FIntPoint> DesiredMesh;
-    GetChunksInRadius(CenterBlock, GenRadius, DesiredGen);
-    GetChunksInRadius(CenterBlock, MeshRadius, DesiredMesh);
+    TSet<FIntPoint> Keep;
+    for (const FIntPoint& C : Desired)
+        Keep.Add(C);
 
-    // Remove chunks that are out of range of generation
     TArray<FIntPoint> ToRemove;
-    for (const FIntPoint& C : GeneratingChunks)
-        if (!DesiredGen.Contains(C))
-            ToRemove.Add(C);
-
-    // Also remove mesh-only out-of-range if they were somehow tracked
-    for (const FIntPoint& C : MeshReadyChunks)
-        if (!DesiredMesh.Contains(C))
-            ToRemove.AddUnique(C);
+    for (const auto& KV : AllChunks)
+        if (!Keep.Contains(KV.Key))
+            ToRemove.Add(KV.Key);
 
     for (const FIntPoint& C : ToRemove)
     {
-        PendingRemoval.Add(C);
-        GeneratingChunks.Remove(C);
-        MeshReadyChunks.Remove(C);
+        AllChunks.Remove(C);
+        OnChunkRemoved.Broadcast(C);
     }
 
-    // Add new chunks for generation
-    for (const FIntPoint& C : DesiredGen)
-        if (!GeneratingChunks.Contains(C) && !AllChunks.Contains(C))
-        {
-            GeneratingChunks.Add(C);
-            TSharedPtr<FChunkData> Data = MakeShared<FChunkData>();
-            Data->Initialize(C);
-            AllChunks.Add(C, Data);
-            PendingGeneration.Add(C);
-        }
+    for (const FIntPoint& C : Desired)
+    {
+        if (AllChunks.Contains(C)) continue;
+        TSharedPtr<FChunkData> D = MakeShared<FChunkData>();
+        D->Initialize(C);
+        AllChunks.Add(C, D);
+        EnqueueGen(C);
+    }
 }
 
 void UChunkManagerComponent::TickComponent(float DT, ELevelTick T, FActorComponentTickFunction* F)
 {
     Super::TickComponent(DT, T, F);
 
-    // Process removals (1 per frame, immediate)
-    if (PendingRemoval.Num() > 0)
+    if (ActiveGenTasks < MaxActiveGen && GenQueue.Num() > 0)
     {
-        FIntPoint C = PendingRemoval.Pop();
-        AllChunks.Remove(C);
-        OnChunkRemoved.Broadcast(C);
+        FIntPoint C = GenQueue.Last();
+        GenQueue.RemoveAt(GenQueue.Num() - 1);
+        LaunchGen(C);
     }
 
-    // Generate blocks (3 per frame)
-    for (int32 i = 0; i < 3 && PendingGeneration.Num() > 0; i++)
+    for (int32 i = 0; i < 3 && MeshQueue.Num() > 0; i++)
     {
-        FIntPoint C = PendingGeneration.Pop();
-        GenerateOne(C);
-    }
-
-    // Mesh ready chunks (2 per frame)
-    TArray<FIntPoint> ToMesh;
-    for (const FIntPoint& C : MeshReadyChunks)
-        if (ToMesh.Num() < 2)
-            ToMesh.Add(C);
-
-    for (const FIntPoint& C : ToMesh)
-    {
-        MeshReadyChunks.Remove(C);
+        FIntPoint C = MeshQueue.Last();
+        MeshQueue.RemoveAt(MeshQueue.Num() - 1);
         OnChunkReadyForMesh.Broadcast(C);
     }
 }
 
-void UChunkManagerComponent::GenerateOne(FIntPoint C)
+void UChunkManagerComponent::EnqueueGen(const FIntPoint& C)
 {
-    if (!Generator) return;
+    GenQueue.Add(C);
+}
 
-    TSharedPtr<FChunkData>* Data = AllChunks.Find(C);
-    if (!Data || !Data->IsValid()) return;
+void UChunkManagerComponent::EnqueueMesh(const FIntPoint& C)
+{
+    MeshQueue.AddUnique(C);
+}
 
-    if (!(*Data)->bIsGenerated)
-        Generator->GenerateChunk(*(*Data));
+void UChunkManagerComponent::LaunchGen(FIntPoint C)
+{
+    TSharedPtr<FChunkData> D = AllChunks.FindRef(C);
+    if (!D.IsValid() || D->bIsGenerated) return;
 
-    GeneratingChunks.Remove(C);
-    TryEnqueueMesh(C);
+    ActiveGenTasks++;
+    FGeneratorParams P = Generator->CaptureParams();
+    TWeakObjectPtr<UChunkManagerComponent> WeakSelf(this);
+
+    Async(EAsyncExecution::ThreadPool, [D, C, P, WeakSelf]()
+    {
+        UWorldGeneratorComponent::GenerateChunkData(*D, P);
+
+        AsyncTask(ENamedThreads::GameThread, [D, C, WeakSelf]()
+        {
+            if (!WeakSelf.IsValid()) return;
+            WeakSelf->OnGenComplete(C, D);
+        });
+    });
+}
+
+void UChunkManagerComponent::OnGenComplete(FIntPoint C, TSharedPtr<FChunkData> D)
+{
+    ActiveGenTasks--;
+    if (!D.IsValid()) return;
+
+    D->bIsGenerated = true;
+
+    TryMesh(C);
 
     for (int32 DY = -1; DY <= 1; DY++)
         for (int32 DX = -1; DX <= 1; DX++)
             if (DX != 0 || DY != 0)
-                TryEnqueueMesh(FIntPoint(C.X + DX, C.Y + DY));
+                TryMesh(FIntPoint(C.X + DX, C.Y + DY));
 }
 
-void UChunkManagerComponent::RemoveOne(FIntPoint C)
+void UChunkManagerComponent::TryMesh(FIntPoint C)
 {
-    AllChunks.Remove(C);
-    OnChunkRemoved.Broadcast(C);
+    if (!AllChunks.Contains(C)) return;
+    if (!AllNeighborsReady(C)) return;
+
+    TSharedPtr<FChunkData> D = AllChunks.FindRef(C);
+    if (!D.IsValid() || !D->bIsGenerated) return;
+
+    EnqueueMesh(C);
 }
 
-void UChunkManagerComponent::TryEnqueueMesh(FIntPoint C)
-{
-    if (AllNeighborsGenerated(C))
-    {
-        UE_LOG(LogChunkMgr, Log, TEXT("Mesh ready (%d, %d)"), C.X, C.Y);
-        MeshReadyChunks.Add(C);
-    }
-    else
-    {
-        UE_LOG(LogChunkMgr, Verbose, TEXT("Mesh waiting (%d, %d) - neighbors not ready"), C.X, C.Y);
-    }
-}
-
-bool UChunkManagerComponent::AllNeighborsGenerated(FIntPoint C) const
+bool UChunkManagerComponent::AllNeighborsReady(FIntPoint C) const
 {
     for (int32 DY = -1; DY <= 1; DY++)
         for (int32 DX = -1; DX <= 1; DX++)
         {
             if (DX == 0 && DY == 0) continue;
-            FIntPoint N(C.X + DX, C.Y + DY);
-            const TSharedPtr<FChunkData>* D = AllChunks.Find(N);
+            const TSharedPtr<FChunkData>* D = AllChunks.Find(FIntPoint(C.X + DX, C.Y + DY));
             if (!D || !D->IsValid() || !(*D)->bIsGenerated)
                 return false;
         }
     return true;
 }
 
-void UChunkManagerComponent::GetChunksInRadius(const FIntPoint& Center, int32 Radius, TSet<FIntPoint>& Out)
+void UChunkManagerComponent::DesiredCoords(const FIntPoint& Center, int32 R, TArray<FIntPoint>& Out) const
 {
     FIntPoint CC = BlockToChunk(Center.X, Center.Y);
-    for (int32 DY = -Radius; DY <= Radius; DY++)
-        for (int32 DX = -Radius; DX <= Radius; DX++)
-            if (DX * DX + DY * DY <= Radius * Radius)
+    Out.Reserve((2 * R + 1) * (2 * R + 1));
+    for (int32 DY = -R; DY <= R; DY++)
+        for (int32 DX = -R; DX <= R; DX++)
+            if (DX * DX + DY * DY <= R * R)
                 Out.Add(FIntPoint(CC.X + DX, CC.Y + DY));
-}
-
-void UChunkManagerComponent::AddDesiredChunks(const FIntPoint& Center, int32 Radius, TSet<FIntPoint>& Out)
-{
-    for (int32 DY = -Radius; DY <= Radius; DY++)
-        for (int32 DX = -Radius; DX <= Radius; DX++)
-            if (DX * DX + DY * DY <= Radius * Radius)
-                Out.Add(FIntPoint(Center.X + DX, Center.Y + DY));
 }
 
 TSharedPtr<FChunkData> UChunkManagerComponent::GetChunk(const FIntPoint& C) const
@@ -174,12 +160,9 @@ bool UChunkManagerComponent::SetBlock(int32 BX, int32 BY, int32 BZ, EBlockId Blo
 
     (*D)->SetBlock(BX - C.X * CHUNK_SIZE, BY - C.Y * CHUNK_SIZE, BZ, Block);
 
-    // Re-mesh this chunk and all neighbors in mesh radius
-    MeshReadyChunks.Add(C);
     for (int32 DY = -1; DY <= 1; DY++)
         for (int32 DX = -1; DX <= 1; DX++)
-            if (DX != 0 || DY != 0)
-                MeshReadyChunks.Add(FIntPoint(C.X + DX, C.Y + DY));
+            EnqueueMesh(FIntPoint(C.X + DX, C.Y + DY));
 
     return true;
 }
