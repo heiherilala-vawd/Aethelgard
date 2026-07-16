@@ -84,7 +84,7 @@ void UGreedyMeshGenerator::AddQuad(
 {
     int32 A1 = (Axis + 1) % 3;
     int32 A2 = (Axis + 2) % 3;
-    float L = (float)Layer * Scale;
+    float L = (float)(Layer + (Sign > 0 ? 1 : 0)) * Scale;
     float UU = (float)U * Scale;
     float VV = (float)V * Scale;
     float UW = (float)(U + W) * Scale;
@@ -111,8 +111,8 @@ void UGreedyMeshGenerator::AddQuad(
     {
         Out.Vertices.Add(Verts[0]); Out.Vertices.Add(Verts[1]);
         Out.Vertices.Add(Verts[2]); Out.Vertices.Add(Verts[3]);
-        Out.Triangles.Add(B+0); Out.Triangles.Add(B+2); Out.Triangles.Add(B+1);
-        Out.Triangles.Add(B+0); Out.Triangles.Add(B+3); Out.Triangles.Add(B+2);
+        Out.Triangles.Add(B+0); Out.Triangles.Add(B+1); Out.Triangles.Add(B+2);
+        Out.Triangles.Add(B+0); Out.Triangles.Add(B+2); Out.Triangles.Add(B+3);
     }
 
     for (int32 i = 0; i < 4; i++)
