@@ -3,6 +3,7 @@
 #include "Game/AethelgardGameMode.h"
 #include "Game/AethelgardCharacter.h"
 #include "Game/AethelgardGameState.h"
+#include "Game/AethelgardHUD.h"
 #include "Terrain/VoxelWorld.h"
 #include "Terrain/SaveSystem.h"
 #include "Terrain/NetworkSystemComponent.h"
@@ -15,6 +16,7 @@ AAethelgardGameMode::AAethelgardGameMode()
 {
     DefaultPawnClass = AAethelgardCharacter::StaticClass();
     GameStateClass = AAethelgardGameState::StaticClass();
+    HUDClass = AAethelgardHUD::StaticClass();
     VoxelWorldClass = AVoxelWorld::StaticClass();
     CurrentSlotName = TEXT("AethelgardWorld");
 }

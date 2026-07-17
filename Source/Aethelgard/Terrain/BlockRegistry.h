@@ -22,11 +22,28 @@ enum class EBlockId : uint8
 struct FBlockDefinition
 {
     FName Name;
+    FName MaterialPath;
     float Hardness;
     float Resistance;
     bool bIsTransparent;
     bool bIsLiquid;
 };
+
+inline const FBlockDefinition& GetBlockDef(EBlockId Id)
+{
+    static const FBlockDefinition Definitions[] =
+    {
+        { NAME_None,   NAME_None, 0.0f, 0.0f, false, false },  // Air
+        { TEXT("Stone"),   TEXT("/Game/Materials/Environment/M_Stone"),   1.5f, 6.0f, false, false },
+        { TEXT("Dirt"),    TEXT("/Game/Materials/Environment/M_Dirt"),    0.5f, 0.5f, false, false },
+        { TEXT("Grass"),   TEXT("/Game/Materials/Environment/M_Grass"),   0.6f, 0.6f, false, false },
+        { TEXT("Sand"),    TEXT("/Game/Materials/Environment/M_Sand"),    0.5f, 0.5f, false, false },
+        { TEXT("Water"),   TEXT("/Game/Materials/Liquid/M_Water"),        0.0f, 0.0f, true,  true  },
+        { TEXT("Wood"),    TEXT("/Game/Materials/Environment/M_Wood"),    2.0f, 2.0f, false, false },
+        { TEXT("Leaves"),  TEXT("/Game/Materials/Environment/M_Leaves"),  0.2f, 0.2f, true,  false },
+    };
+    return Definitions[static_cast<int32>(Id)];
+}
 
 inline FColor GetBlockColor(EBlockId BlockId, int32 FaceAxis = 2, int32 FaceDirection = 1)
 {

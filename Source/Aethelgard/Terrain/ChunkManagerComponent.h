@@ -27,6 +27,7 @@ public:
     void UpdateCenter(const FIntPoint& CenterBlock);
 
     TSharedPtr<FChunkData> GetChunk(const FIntPoint& C) const;
+    int32 GetChunkCount() const { return AllChunks.Num(); }
     EBlockId GetBlock(int32 BX, int32 BY, int32 BZ) const;
     bool SetBlock(int32 BX, int32 BY, int32 BZ, EBlockId Block);
 

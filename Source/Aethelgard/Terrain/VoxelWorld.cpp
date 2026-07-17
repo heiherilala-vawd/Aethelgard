@@ -8,7 +8,14 @@
 #include "Terrain/SaveSystem.h"
 #include "ProceduralMeshComponent.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInterface.h"
 #include "Async/Async.h"
+
+#if WITH_EDITOR
+#include "AssetToolsModule.h"
+#include "IAssetTools.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#endif
 
 AVoxelWorld::AVoxelWorld()
 {
@@ -26,14 +33,15 @@ AVoxelWorld::AVoxelWorld()
     MainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     MainMesh->bUseComplexAsSimpleCollision = false;
 
-    UMaterialInterface* Mat = UMaterial::GetDefaultMaterial(MD_Surface);
-    if (Mat) MainMesh->SetMaterial(0, Mat);
+    UMaterialInterface* DefaultMat = UMaterial::GetDefaultMaterial(MD_Surface);
+    if (DefaultMat) MainMesh->SetMaterial(0, DefaultMat);
 }
 
 void AVoxelWorld::BeginPlay()
 {
     Super::BeginPlay();
     Init();
+    LoadBlockMaterials();
     GetWorldTimerManager().SetTimer(FollowTimer, this, &AVoxelWorld::TickFollowPlayer, 0.3f, true);
 }
 
@@ -47,6 +55,62 @@ void AVoxelWorld::Init()
     ChunkManager->OnChunkRemoved.AddUObject(this, &AVoxelWorld::OnChunkRemoved);
 }
 
+void AVoxelWorld::LoadBlockMaterials()
+{
+    DefaultMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
+
+#if WITH_EDITOR
+    EnsureBlockMaterialsExist();
+#endif
+
+    for (int32 i = 1; i < static_cast<int32>(EBlockId::MAX); i++)
+    {
+        EBlockId Id = static_cast<EBlockId>(i);
+        const FBlockDefinition& Def = GetBlockDef(Id);
+
+        if (Def.MaterialPath.IsNone()) continue;
+
+        FString Path = Def.MaterialPath.ToString();
+        UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, *Path);
+        if (Mat)
+            BlockMaterials.Add(Id, Mat);
+    }
+}
+
+#if WITH_EDITOR
+void AVoxelWorld::EnsureBlockMaterialsExist()
+{
+    static const FString DefaultMatPath = TEXT("/Game/Materials/M_Default");
+
+    UMaterialInterface* DefaultMat = LoadObject<UMaterialInterface>(nullptr, *DefaultMatPath, nullptr, LOAD_NoWarn);
+    if (!DefaultMat)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("M_Default not found, cannot auto-create block materials"));
+        return;
+    }
+
+    IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+
+    for (int32 i = 1; i < static_cast<int32>(EBlockId::MAX); i++)
+    {
+        EBlockId Id = static_cast<EBlockId>(i);
+        const FBlockDefinition& Def = GetBlockDef(Id);
+
+        if (Def.MaterialPath.IsNone()) continue;
+
+        FString DestPath = Def.MaterialPath.ToString();
+
+        if (LoadObject<UMaterialInterface>(nullptr, *DestPath, nullptr, LOAD_NoWarn)) continue;
+
+        FString AssetName = FPaths::GetBaseFilename(DestPath);
+        FString PackagePath = FPaths::GetPath(DestPath);
+        AssetTools.DuplicateAsset(AssetName, PackagePath, DefaultMat);
+
+        UE_LOG(LogTemp, Log, TEXT("Created material: %s (copy of M_Default)"), *DestPath);
+    }
+}
+#endif
+
 void AVoxelWorld::OnChunkReady(const FIntPoint& C)
 {
     BuildSection(C);
@@ -54,22 +118,7 @@ void AVoxelWorld::OnChunkReady(const FIntPoint& C)
 
 void AVoxelWorld::OnChunkRemoved(const FIntPoint& C)
 {
-    int32* SI = ActiveSections.Find(C);
-    if (SI)
-    {
-        MainMesh->ClearMeshSection(*SI);
-        ActiveSections.Remove(C);
-    }
-}
-
-int32 AVoxelWorld::GetOrCreateSection(const FIntPoint& C)
-{
-    int32* Existing = ActiveSections.Find(C);
-    if (Existing) return *Existing;
-
-    int32 SI = NextSection++;
-    ActiveSections.Add(C, SI);
-    return SI;
+    ClearSection(C);
 }
 
 void AVoxelWorld::BuildSection(const FIntPoint& C)
@@ -90,36 +139,41 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
     float Scale = BlockScale;
     UVoxelMeshGenerator* Gen = Mesher;
 
-    // Async mesh generation on thread pool
     Async(EAsyncExecution::ThreadPool, [this, C, Center, NB, Scale, Gen]()
     {
-        FMeshSectionData Mesh;
-        Gen->GenerateMesh(*Center, NB, Mesh, Scale);
+        TMap<EBlockId, FMeshSectionData> Sections;
+        Gen->GenerateMesh(*Center, NB, Sections, Scale);
 
         FVector Offset((float)C.X * CHUNK_SIZE * Scale, (float)C.Y * CHUNK_SIZE * Scale, 0);
-        for (auto& V : Mesh.Vertices)
-            V += Offset;
+        for (auto& Pair : Sections)
+            for (auto& V : Pair.Value.Vertices)
+                V += Offset;
 
-        // Dispatch back to game thread
-        AsyncTask(ENamedThreads::GameThread, [this, C, Mesh = MoveTemp(Mesh)]()
+        AsyncTask(ENamedThreads::GameThread, [this, C, Sections = MoveTemp(Sections)]()
         {
             if (!MainMesh || !IsValid(this)) return;
 
-            if (ActiveSections.Contains(C))
+            ClearSection(C);
+
+            TMap<EBlockId, int32>& ChunkSections = ActiveSections.Add(C);
+
+            for (auto& Pair : Sections)
             {
-                int32 SI = ActiveSections[C];
-                MainMesh->ClearMeshSection(SI);
-                if (Mesh.Vertices.Num() > 0)
-                    MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
-                        Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
-            }
-            else
-            {
+                EBlockId BlockType = Pair.Key;
+                const FMeshSectionData& Mesh = Pair.Value;
+
+                if (Mesh.Vertices.Num() == 0) continue;
+
                 int32 SI = NextSection++;
-                ActiveSections.Add(C, SI);
-                if (Mesh.Vertices.Num() > 0)
-                    MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
-                        Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
+                ChunkSections.Add(BlockType, SI);
+
+                MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
+                    Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
+
+                UMaterialInterface** MatPtr = BlockMaterials.Find(BlockType);
+                UMaterialInterface* Mat = MatPtr ? *MatPtr : DefaultMaterial;
+                if (Mat)
+                    MainMesh->SetMaterial(SI, Mat);
             }
         });
     });
@@ -127,12 +181,13 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
 
 void AVoxelWorld::ClearSection(const FIntPoint& C)
 {
-    int32* SI = ActiveSections.Find(C);
-    if (SI)
-    {
-        MainMesh->ClearMeshSection(*SI);
-        ActiveSections.Remove(C);
-    }
+    TMap<EBlockId, int32>* ChunkSections = ActiveSections.Find(C);
+    if (!ChunkSections) return;
+
+    for (auto& Pair : *ChunkSections)
+        MainMesh->ClearMeshSection(Pair.Value);
+
+    ActiveSections.Remove(C);
 }
 
 void AVoxelWorld::TickFollowPlayer()
@@ -172,7 +227,7 @@ void AVoxelWorld::LoadWorld(const FString& Slot)
     {
         Seed = LS;
         Generator->Seed = LS;
-        Network->SetWorldSeed(LS);
+        Network->SetWorldSeed(Seed);
         for (const auto& Ch : Mods)
             for (const auto& Chg : Ch.Changes)
                 ChunkManager->SetBlock(

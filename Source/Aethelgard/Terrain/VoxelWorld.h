@@ -58,23 +58,21 @@ protected:
 
 private:
     void Init();
+    void LoadBlockMaterials();
+#if WITH_EDITOR
+    void EnsureBlockMaterialsExist();
+#endif
     void OnChunkReady(const FIntPoint& C);
     void OnChunkRemoved(const FIntPoint& C);
     void BuildSection(const FIntPoint& C);
     void ClearSection(const FIntPoint& C);
     void TickFollowPlayer();
 
-    struct FSectionInfo
-    {
-        int32 SectionIndex = 0;
-        FIntPoint Coord;
-    };
-    TArray<FSectionInfo> PendingSections;
+    TMap<EBlockId, UMaterialInterface*> BlockMaterials;
+    UMaterialInterface* DefaultMaterial = nullptr;
+
+    TMap<FIntPoint, TMap<EBlockId, int32>> ActiveSections;
     int32 NextSection = 0;
-
-    TMap<FIntPoint, int32> ActiveSections;
-
-    int32 GetOrCreateSection(const FIntPoint& C);
 
     FTimerHandle FollowTimer;
 };

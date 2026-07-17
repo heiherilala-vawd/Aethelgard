@@ -36,6 +36,6 @@ public:
     virtual void GenerateMesh(
         const FChunkData& ChunkData,
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& Neighbors,
-        FMeshSectionData& OutMeshData,
+        TMap<EBlockId, FMeshSectionData>& OutSections,
         float BlockScale = 100.0f) PURE_VIRTUAL(UVoxelMeshGenerator::GenerateMesh, );
 };

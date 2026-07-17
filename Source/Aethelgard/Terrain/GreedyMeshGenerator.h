@@ -15,16 +15,16 @@ public:
     virtual void GenerateMesh(
         const FChunkData& ChunkData,
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& Neighbors,
-        FMeshSectionData& OutMeshData,
+        TMap<EBlockId, FMeshSectionData>& OutSections,
         float BlockScale = 100.0f) override;
 
 private:
     void ProcessAxis(const FChunkData& CD,
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
         int32 Axis, int32 Sign, int32 LayerCount,
-        FMeshSectionData& Out, float Scale);
+        TMap<EBlockId, FMeshSectionData>& Out, float Scale);
 
-    void AddQuad(FMeshSectionData& Out, FColor Color,
+    void AddQuad(FMeshSectionData& Out, EBlockId BlockType,
         int32 Axis, int32 Sign, int32 Layer,
         int32 U, int32 V, int32 W, int32 H, float Scale);
 

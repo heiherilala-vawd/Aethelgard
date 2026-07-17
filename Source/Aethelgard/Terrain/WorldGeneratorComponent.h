@@ -7,6 +7,30 @@
 #include "Terrain/ChunkData.h"
 #include "WorldGeneratorComponent.generated.h"
 
+UENUM()
+enum class EBiomeType : uint8
+{
+    Plains = 0,
+    Desert,
+    Mountain,
+    Forest,
+    MAX UMETA(Hidden)
+};
+
+USTRUCT()
+struct FBiomeParams
+{
+    GENERATED_BODY()
+
+    float BaseHeight = 50.0f;
+    float HeightScale = 25.0f;
+    float NoiseScale = 0.005f;
+    int32 Octaves = 3;
+    EBlockId SurfaceBlock = EBlockId::Grass;
+    EBlockId SubsurfaceBlock = EBlockId::Dirt;
+    int32 SubsurfaceDepth = 3;
+};
+
 USTRUCT()
 struct FGeneratorParams
 {
@@ -18,6 +42,11 @@ struct FGeneratorParams
     float NoiseScale = 0.005f;
     int32 Octaves = 3;
     float WaterLevel = 35.0f;
+
+    float BiomeNoiseScale = 0.0015f;
+    float LakeNoiseScale = 0.003f;
+    float LakeThreshold = 0.85f;
+    float MinLakeHeight = 50.0f;
 };
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
@@ -44,6 +73,18 @@ public:
     UPROPERTY(EditAnywhere, Category = "Generation")
     float WaterLevel = 35.0f;
 
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    float BiomeNoiseScale = 0.0015f;
+
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    float LakeNoiseScale = 0.003f;
+
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    float LakeThreshold = 0.85f;
+
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    float MinLakeHeight = 50.0f;
+
     void GenerateChunk(FChunkData& ChunkData);
     float GetHeight(int32 WorldX, int32 WorldY) const;
 
@@ -56,8 +97,18 @@ public:
         P.NoiseScale = NoiseScale;
         P.Octaves = Octaves;
         P.WaterLevel = WaterLevel;
+        P.BiomeNoiseScale = BiomeNoiseScale;
+        P.LakeNoiseScale = LakeNoiseScale;
+        P.LakeThreshold = LakeThreshold;
+        P.MinLakeHeight = MinLakeHeight;
         return P;
     }
 
     static void GenerateChunkData(FChunkData& ChunkData, const FGeneratorParams& P);
+    static float GetBiomeValue(int32 WX, int32 WY, int32 Seed);
+
+private:
+    static void GetBlendedBiomeParams(float BiomeValue, int32 WX, int32 WY, const FGeneratorParams& P,
+        float& OutHeight, EBlockId& OutSurface, EBlockId& OutSubsurface, int32& OutSubsurfaceDepth);
+    static float ComputeLakeDepth(int32 WX, int32 WY, float Height, const FGeneratorParams& P);
 };

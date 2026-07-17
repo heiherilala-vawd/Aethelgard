@@ -15,6 +15,11 @@ public class Aethelgard : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "AssetTools", "UnrealEd" });
+		}
+
 		PrivateIncludePaths.Add(ModuleDirectory);
 		PrivateIncludePaths.Add(ModuleDirectory + "/Terrain");
 		PrivateIncludePaths.Add(ModuleDirectory + "/Game");

@@ -5,24 +5,26 @@
 void UGreedyMeshGenerator::GenerateMesh(
     const FChunkData& ChunkData,
     const TMap<FIntPoint, TSharedPtr<FChunkData>>& Neighbors,
-    FMeshSectionData& OutMeshData,
+    TMap<EBlockId, FMeshSectionData>& OutSections,
     float BlockScale)
 {
-    OutMeshData.Reset();
+    for (auto& Pair : OutSections)
+        Pair.Value.Reset();
+    OutSections.Empty();
 
-    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutMeshData, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutMeshData, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutMeshData, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutMeshData, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutMeshData, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutMeshData, BlockScale);
+    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale);
+    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale);
+    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale);
+    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale);
+    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale);
+    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale);
 }
 
 void UGreedyMeshGenerator::ProcessAxis(
     const FChunkData& CD,
     const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
     int32 Axis, int32 Sign, int32 LayerCount,
-    FMeshSectionData& Out, float Scale)
+    TMap<EBlockId, FMeshSectionData>& Out, float Scale)
 {
     int32 A1 = (Axis + 1) % 3;
     int32 A2 = (Axis + 2) % 3;
@@ -52,7 +54,6 @@ void UGreedyMeshGenerator::ProcessAxis(
             {
                 if (!Mask[V * S1 + U]) continue;
                 EBlockId Cur = Types[V * S1 + U];
-                FColor Col = GetBlockColor(Cur, Axis, Sign);
 
                 int32 W = 1;
                 while (U + W < S1 && Mask[V * S1 + U + W] && Types[V * S1 + U + W] == Cur) W++;
@@ -72,13 +73,14 @@ void UGreedyMeshGenerator::ProcessAxis(
                     for (int32 DU = 0; DU < W; DU++)
                         Mask[(V + DV) * S1 + U + DU] = 0;
 
-                AddQuad(Out, Col, Axis, Sign, L, U, V, W, H, Scale);
+                FMeshSectionData& Section = Out.FindOrAdd(Cur);
+                AddQuad(Section, Cur, Axis, Sign, L, U, V, W, H, Scale);
             }
     }
 }
 
 void UGreedyMeshGenerator::AddQuad(
-    FMeshSectionData& Out, FColor Color,
+    FMeshSectionData& Out, EBlockId BlockType,
     int32 Axis, int32 Sign, int32 Layer,
     int32 U, int32 V, int32 W, int32 H, float Scale)
 {
@@ -98,6 +100,8 @@ void UGreedyMeshGenerator::AddQuad(
 
     FVector Norm(0,0,0); Norm[Axis] = (float)Sign;
     FProcMeshTangent Tan(1,0,0);
+
+    FColor Color = GetBlockColor(BlockType, Axis, Sign);
 
     int32 B = Out.Vertices.Num();
     if (Sign > 0)
