@@ -16,6 +16,7 @@ enum class EBlockId : uint8
     Water,
     Wood,
     Leaves,
+    Clay,
     MAX UMETA(Hidden)
 };
 
@@ -41,6 +42,7 @@ inline const FBlockDefinition& GetBlockDef(EBlockId Id)
         { TEXT("Water"),   TEXT("/Game/Materials/Liquid/M_Water"),        0.0f, 0.0f, true,  true  },
         { TEXT("Wood"),    TEXT("/Game/Materials/Environment/M_Wood"),    2.0f, 2.0f, false, false },
         { TEXT("Leaves"),  TEXT("/Game/Materials/Environment/M_Leaves"),  0.2f, 0.2f, true,  false },
+        { TEXT("Clay"),    TEXT("/Game/Materials/Environment/M_Clay"),    0.5f, 1.0f, false, false },
     };
     return Definitions[static_cast<int32>(Id)];
 }
@@ -59,6 +61,7 @@ inline FColor GetBlockColor(EBlockId BlockId, int32 FaceAxis = 2, int32 FaceDire
     case EBlockId::Water:  return FColor(30, 100, 180);
     case EBlockId::Wood:   return FColor(101, 67, 33);
     case EBlockId::Leaves: return FColor(34, 120, 34);
+    case EBlockId::Clay:   return FColor(160, 82, 45);
     default:               return FColor::Magenta;
     }
 }

@@ -47,6 +47,10 @@ struct FGeneratorParams
     float LakeNoiseScale = 0.003f;
     float LakeThreshold = 0.85f;
     float MinLakeHeight = 50.0f;
+    int32 LakeSearchRadius = 15;
+    float BeachSlopeRadius = 6.0f;
+    float BeachBlendPower = 2.0f;
+    int32 LakeClayDepth = 3;
 };
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
@@ -85,6 +89,18 @@ public:
     UPROPERTY(EditAnywhere, Category = "Biome")
     float MinLakeHeight = 50.0f;
 
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    int32 LakeSearchRadius = 15;
+
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    float BeachSlopeRadius = 6.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    float BeachBlendPower = 2.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Biome")
+    int32 LakeClayDepth = 3;
+
     void GenerateChunk(FChunkData& ChunkData);
     float GetHeight(int32 WorldX, int32 WorldY) const;
 
@@ -101,6 +117,10 @@ public:
         P.LakeNoiseScale = LakeNoiseScale;
         P.LakeThreshold = LakeThreshold;
         P.MinLakeHeight = MinLakeHeight;
+        P.LakeSearchRadius = LakeSearchRadius;
+        P.BeachSlopeRadius = BeachSlopeRadius;
+        P.BeachBlendPower = BeachBlendPower;
+        P.LakeClayDepth = LakeClayDepth;
         return P;
     }
 
@@ -110,5 +130,4 @@ public:
 private:
     static void GetBlendedBiomeParams(float BiomeValue, int32 WX, int32 WY, const FGeneratorParams& P,
         float& OutHeight, EBlockId& OutSurface, EBlockId& OutSubsurface, int32& OutSubsurfaceDepth);
-    static float ComputeLakeDepth(int32 WX, int32 WY, float Height, const FGeneratorParams& P);
 };

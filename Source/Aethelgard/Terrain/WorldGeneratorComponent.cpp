@@ -93,28 +93,12 @@ void UWorldGeneratorComponent::GetBlendedBiomeParams(float BiomeValue, int32 WX,
     }
 }
 
-float UWorldGeneratorComponent::ComputeLakeDepth(int32 WX, int32 WY, float Height, const FGeneratorParams& P)
+static bool IsLakeColumn(int32 WX, int32 WY, float Height, const FGeneratorParams& P)
 {
-    if (Height <= P.MinLakeHeight)
-        return -1.0f;
-
+    if (Height <= P.MinLakeHeight) return false;
     float LakeNoise = GetNoise2D((float)WX, (float)WY, P.LakeNoiseScale, 2, P.Seed + 90000);
     float LakeNorm = FMath::Fmod(FMath::Fmod(LakeNoise, 1.0f) + 1.0f, 1.0f);
-
-    if (LakeNorm <= P.LakeThreshold)
-        return -1.0f;
-
-    float DepthNoise = GetNoise2D((float)WX, (float)WY, 0.01f, 1, P.Seed + 120000);
-    float DepthNorm = FMath::Fmod(FMath::Fmod(DepthNoise, 1.0f) + 1.0f, 1.0f);
-    float Depth = 3.0f + DepthNorm * 3.0f;
-
-    float LakeSurface = FMath::Max(Height - Depth, P.WaterLevel + 2.0f);
-    float ActualDepth = Height - LakeSurface;
-
-    if (ActualDepth < 2.0f)
-        return -1.0f;
-
-    return ActualDepth;
+    return LakeNorm > P.LakeThreshold;
 }
 
 void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FGeneratorParams& P)
@@ -122,65 +106,171 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
     const FIntPoint& CP = ChunkData.Position;
     const int32 SX = CP.X * CHUNK_SIZE;
     const int32 SY = CP.Y * CHUNK_SIZE;
+    const int32 R = P.LakeSearchRadius;
 
-    for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
+    const int32 PreSize = CHUNK_SIZE + 2 * R;
+    TArray<float> PreH;
+    TArray<bool> PreL;
+    PreH.SetNumUninitialized(PreSize * PreSize);
+    PreL.SetNumUninitialized(PreSize * PreSize);
+
+    for (int32 PY = 0; PY < PreSize; PY++)
     {
-        int32 WY = SY + Y;
-        for (int32 X = 0; X < CHUNK_SIZE; X++)
+        int32 WY = (SY - R) + PY;
+        for (int32 PX = 0; PX < PreSize; PX++)
         {
-            int32 WX = SX + X;
-
-            float BiomeValue = GetBiomeValue(WX, WY, P.Seed);
-            float Height;
-            EBlockId SurfaceBlock, SubsurfaceBlock;
-            int32 SubsurfaceDepth;
-
-            GetBlendedBiomeParams(BiomeValue, WX, WY, P,
-                Height, SurfaceBlock, SubsurfaceBlock, SubsurfaceDepth);
-
-            float LakeDepth = ComputeLakeDepth(WX, WY, Height, P);
-            float EffectiveHeight = Height;
-
-            if (LakeDepth > 0.0f)
-            {
-                float LakeSurface = Height - LakeDepth;
-                float LakeFloor = LakeSurface - 2.0f;
-                EffectiveHeight = LakeFloor;
-            }
-
-            for (int32 Z = 0; Z < WORLD_HEIGHT; Z++)
-            {
-                EBlockId Block;
-
-                if ((float)Z < EffectiveHeight - (float)SubsurfaceDepth)
-                {
-                    Block = EBlockId::Stone;
-                }
-                else if ((float)Z < EffectiveHeight - 1.0f)
-                {
-                    Block = SubsurfaceBlock;
-                }
-                else if ((float)Z < EffectiveHeight)
-                {
-                    Block = SurfaceBlock;
-                }
-                else if (LakeDepth > 0.0f && (float)Z <= Height - LakeDepth)
-                {
-                    Block = EBlockId::Water;
-                }
-                else if ((float)Z <= P.WaterLevel)
-                {
-                    Block = EBlockId::Water;
-                }
-                else
-                {
-                    Block = EBlockId::Air;
-                }
-
-                ChunkData.SetBlock(X, Y, Z, Block);
-            }
+            int32 WX = (SX - R) + PX;
+            int32 Idx = PY * PreSize + PX;
+            float BV = GetBiomeValue(WX, WY, P.Seed);
+            EBlockId S, Sub;
+            int32 D;
+            GetBlendedBiomeParams(BV, WX, WY, P, PreH[Idx], S, Sub, D);
+            PreL[Idx] = IsLakeColumn(WX, WY, PreH[Idx], P);
         }
     }
+
+    auto AccessPre = [&](int32 WX, int32 WY, float& OutH, bool& OutL)
+    {
+        int32 PX = WX - (SX - R);
+        int32 PY = WY - (SY - R);
+        if (PX >= 0 && PX < PreSize && PY >= 0 && PY < PreSize)
+        {
+            int32 Idx = PY * PreSize + PX;
+            OutH = PreH[Idx];
+            OutL = PreL[Idx];
+        }
+        else
+        {
+            float BV = GetBiomeValue(WX, WY, P.Seed);
+            EBlockId S, Sub;
+            int32 D;
+            GetBlendedBiomeParams(BV, WX, WY, P, OutH, S, Sub, D);
+            OutL = IsLakeColumn(WX, WY, OutH, P);
+        }
+    };
+
+    struct FCol { float Height; bool bLake; EBlockId Surf; EBlockId Sub; int32 SubD; };
+    FCol Cols[CHUNK_SIZE * CHUNK_SIZE];
+    bool bAnyLake = false;
+
+    for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
+        for (int32 X = 0; X < CHUNK_SIZE; X++)
+        {
+            int32 Idx = Y * CHUNK_SIZE + X;
+            int32 WX = SX + X;
+            int32 WY = SY + Y;
+            AccessPre(WX, WY, Cols[Idx].Height, Cols[Idx].bLake);
+            float BV = GetBiomeValue(WX, WY, P.Seed);
+            GetBlendedBiomeParams(BV, WX, WY, P, Cols[Idx].Height, Cols[Idx].Surf, Cols[Idx].Sub, Cols[Idx].SubD);
+            if (Cols[Idx].bLake) bAnyLake = true;
+        }
+
+    float LakeWL = P.WaterLevel;
+
+    if (bAnyLake)
+    {
+        float MinPerim = MAX_FLT;
+        bool bFound = false;
+
+        for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
+            for (int32 X = 0; X < CHUNK_SIZE; X++)
+            {
+                int32 Idx = Y * CHUNK_SIZE + X;
+                if (!Cols[Idx].bLake) continue;
+                int32 WX = SX + X;
+                int32 WY = SY + Y;
+
+                for (int32 DX = -R; DX <= R; DX++)
+                    for (int32 DY = -R; DY <= R; DY++)
+                    {
+                        if (DX == 0 && DY == 0) continue;
+                        float NH; bool NL;
+                        AccessPre(WX + DX, WY + DY, NH, NL);
+                        if (!NL)
+                        {
+                            MinPerim = FMath::Min(MinPerim, NH);
+                            bFound = true;
+                        }
+                    }
+            }
+
+        if (bFound)
+            LakeWL = FMath::Max(MinPerim - 0.1f, P.WaterLevel);
+        else
+        {
+            float MinH = MAX_FLT;
+            for (int32 i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++)
+                if (Cols[i].bLake)
+                    MinH = FMath::Min(MinH, Cols[i].Height);
+            LakeWL = FMath::Max(MinH - 0.1f, P.WaterLevel);
+        }
+    }
+
+    for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
+        for (int32 X = 0; X < CHUNK_SIZE; X++)
+        {
+            int32 Idx = Y * CHUNK_SIZE + X;
+            int32 WX = SX + X;
+            int32 WY = SY + Y;
+            const FCol& Col = Cols[Idx];
+
+            if (Col.bLake)
+            {
+                float MinEdge = (float)(R + 1);
+                for (int32 DX = -R; DX <= R; DX++)
+                    for (int32 DY = -R; DY <= R; DY++)
+                    {
+                        if (DX == 0 && DY == 0) continue;
+                        float NH; bool NL;
+                        AccessPre(WX + DX, WY + DY, NH, NL);
+                        if (!NL)
+                        {
+                            float D = FMath::Sqrt((float)(DX * DX + DY * DY));
+                            MinEdge = FMath::Min(MinEdge, D);
+                        }
+                    }
+
+                float BT = FMath::Clamp(MinEdge / P.BeachSlopeRadius, 0.0f, 1.0f);
+                float Target = FMath::Lerp(Col.Height, LakeWL, FMath::Pow(BT, P.BeachBlendPower));
+                float Effective = FMath::Min(Col.Height, Target);
+
+                for (int32 Z = 0; Z < WORLD_HEIGHT; Z++)
+                {
+                    EBlockId Block;
+                    if ((float)Z < Effective - 1.0f - (float)P.LakeClayDepth)
+                        Block = EBlockId::Stone;
+                    else if ((float)Z < Effective - 1.0f)
+                        Block = EBlockId::Clay;
+                    else if ((float)Z < Effective)
+                        Block = EBlockId::Sand;
+                    else if ((float)Z <= LakeWL)
+                        Block = EBlockId::Water;
+                    else
+                        Block = EBlockId::Air;
+                    ChunkData.SetBlock(X, Y, Z, Block);
+                }
+            }
+            else
+            {
+                float H = Col.Height;
+                int32 SD = Col.SubD;
+                for (int32 Z = 0; Z < WORLD_HEIGHT; Z++)
+                {
+                    EBlockId Block;
+                    if ((float)Z < H - (float)SD)
+                        Block = EBlockId::Stone;
+                    else if ((float)Z < H - 1.0f)
+                        Block = Col.Sub;
+                    else if ((float)Z < H)
+                        Block = Col.Surf;
+                    else if ((float)Z <= P.WaterLevel)
+                        Block = EBlockId::Water;
+                    else
+                        Block = EBlockId::Air;
+                    ChunkData.SetBlock(X, Y, Z, Block);
+                }
+            }
+        }
 
     ChunkData.bIsGenerated = true;
 }
