@@ -54,7 +54,7 @@ protected:
     UNetworkSystemComponent* Network;
 
     UPROPERTY()
-    UProceduralMeshComponent* MainMesh;
+    USceneComponent* SceneRoot;
 
 private:
     void Init();
@@ -68,12 +68,12 @@ private:
     void ClearSection(const FIntPoint& C);
     void TickFollowPlayer();
 
+    UProceduralMeshComponent* GetOrCreateChunkMesh(const FIntPoint& C);
+
     TMap<EBlockId, UMaterialInterface*> BlockMaterials;
     UMaterialInterface* DefaultMaterial = nullptr;
 
-    TMap<FIntPoint, TMap<EBlockId, int32>> ActiveSections;
-    TSet<int32> FreeSections;
-    int32 NextSection = 0;
+    TMap<FIntPoint, UProceduralMeshComponent*> ChunkMeshes;
 
     FTimerHandle FollowTimer;
 };

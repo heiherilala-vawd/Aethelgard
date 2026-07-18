@@ -7,6 +7,7 @@
 #include "Terrain/NetworkSystemComponent.h"
 #include "Terrain/SaveSystem.h"
 #include "ProceduralMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
 #include "Async/Async.h"
@@ -22,19 +23,13 @@ AVoxelWorld::AVoxelWorld()
     PrimaryActorTick.bCanEverTick = false;
     bReplicates = true;
 
+    SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+    SetRootComponent(SceneRoot);
+
     Generator = CreateDefaultSubobject<UWorldGeneratorComponent>(TEXT("Generator"));
     ChunkManager = CreateDefaultSubobject<UChunkManagerComponent>(TEXT("ChunkManager"));
     Mesher = CreateDefaultSubobject<UGreedyMeshGenerator>(TEXT("Mesher"));
     Network = CreateDefaultSubobject<UNetworkSystemComponent>(TEXT("Network"));
-
-    MainMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MainMesh"));
-    SetRootComponent(MainMesh);
-    MainMesh->SetCastShadow(false);
-    MainMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    MainMesh->bUseComplexAsSimpleCollision = false;
-
-    UMaterialInterface* DefaultMat = UMaterial::GetDefaultMaterial(MD_Surface);
-    if (DefaultMat) MainMesh->SetMaterial(0, DefaultMat);
 }
 
 void AVoxelWorld::BeginPlay()
@@ -123,6 +118,24 @@ void AVoxelWorld::OnChunkRemoved(const FIntPoint& C)
     ClearSection(C);
 }
 
+UProceduralMeshComponent* AVoxelWorld::GetOrCreateChunkMesh(const FIntPoint& C)
+{
+    if (UProceduralMeshComponent** Found = ChunkMeshes.Find(C))
+        return *Found;
+
+    FString Name = FString::Printf(TEXT("ChunkMesh_%d_%d"), C.X, C.Y);
+    UProceduralMeshComponent* Comp = NewObject<UProceduralMeshComponent>(this, *Name);
+    Comp->SetMobility(EComponentMobility::Movable);
+    Comp->SetCastShadow(false);
+    Comp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    Comp->bUseComplexAsSimpleCollision = false;
+    Comp->AttachToComponent(SceneRoot, FAttachmentTransformRules::KeepWorldTransform);
+    Comp->RegisterComponent();
+
+    ChunkMeshes.Add(C, Comp);
+    return Comp;
+}
+
 void AVoxelWorld::BuildSection(const FIntPoint& C)
 {
     TSharedPtr<FChunkData> Center = ChunkManager->GetChunk(C);
@@ -154,38 +167,28 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
 
         AsyncTask(ENamedThreads::GameThread, [this, C, Sections = MoveTemp(Sections)]()
         {
-            if (!MainMesh || !IsValid(this)) return;
+            if (!IsValid(this)) return;
 
             ClearSection(C);
 
-            TMap<EBlockId, int32>& ChunkSections = ActiveSections.Add(C);
+            UProceduralMeshComponent* Mesh = GetOrCreateChunkMesh(C);
 
             for (auto& Pair : Sections)
             {
                 EBlockId BlockType = Pair.Key;
-                const FMeshSectionData& Mesh = Pair.Value;
+                const FMeshSectionData& Data = Pair.Value;
 
-                if (Mesh.Vertices.Num() == 0) continue;
+                if (Data.Vertices.Num() == 0) continue;
 
-                int32 SI;
-                if (FreeSections.Num() > 0)
-                {
-                    SI = *FreeSections.begin();
-                    FreeSections.Remove(SI);
-                }
-                else
-                {
-                    SI = NextSection++;
-                }
-                ChunkSections.Add(BlockType, SI);
+                int32 SI = static_cast<int32>(BlockType);
 
-                MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
-                    Mesh.Normals, Mesh.UVs, Mesh.Colors, Mesh.Tangents, true);
+                Mesh->CreateMeshSection(SI, Data.Vertices, Data.Triangles,
+                    Data.Normals, Data.UVs, Data.Colors, Data.Tangents, true);
 
                 UMaterialInterface** MatPtr = BlockMaterials.Find(BlockType);
                 UMaterialInterface* Mat = MatPtr ? *MatPtr : DefaultMaterial;
                 if (Mat)
-                    MainMesh->SetMaterial(SI, Mat);
+                    Mesh->SetMaterial(SI, Mat);
             }
         });
     });
@@ -193,16 +196,11 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
 
 void AVoxelWorld::ClearSection(const FIntPoint& C)
 {
-    TMap<EBlockId, int32>* ChunkSections = ActiveSections.Find(C);
-    if (!ChunkSections) return;
+    UProceduralMeshComponent** Found = ChunkMeshes.Find(C);
+    if (!Found) return;
 
-    for (auto& Pair : *ChunkSections)
-    {
-        MainMesh->ClearMeshSection(Pair.Value);
-        FreeSections.Add(Pair.Value);
-    }
-
-    ActiveSections.Remove(C);
+    (*Found)->DestroyComponent();
+    ChunkMeshes.Remove(C);
 }
 
 void AVoxelWorld::TickFollowPlayer()

@@ -21,7 +21,7 @@ Single module `Aethelgard`, two subdirectories:
 - `Game/` — Player, GameMode, GameState, HUD
 
 Key classes:
-- `AVoxelWorld` — Root actor, owns components, manages mesh sections (one per block type per chunk)
+- `AVoxelWorld` — Root actor, owns components, one `UProceduralMeshComponent` per chunk (`ChunkMeshes` map)
 - `UChunkManagerComponent` — Chunk storage, load/unload around player, view distance
 - `UWorldGeneratorComponent` — Biome system, height generation, geological layers
 - `UGreedyMeshGenerator` — Greedy meshing, outputs `TMap<EBlockId, FMeshSectionData>` (multi-section)
@@ -58,7 +58,7 @@ if (Target.bBuildEditor)
 |------|----------------|
 | `BlockRegistry.h` | `EBlockId` enum, `FBlockDefinition`, `GetBlockDef()`, `GetBlockColor()` |
 | `ChunkData.h` | `FChunkData` struct |
-| `VoxelWorld.h/.cpp` | Multi-section meshing, material loading, tick loop |
+| `VoxelWorld.h/.cpp` | Per-chunk mesh components, material loading, tick loop |
 | `WorldGeneratorComponent.h/.cpp` | Biome params, noise, height computation, lake generation |
 | `GreedyMeshGenerator.h/.cpp` | Greedy mesh output per block type |
 | `AethelgardHUD.h/.cpp` | Debug HUD overlay |
@@ -66,7 +66,7 @@ if (Target.bBuildEditor)
 ## Pitfalls
 
 - `GetBlock()` / `SetBlock()` on `AVoxelWorld` take **world** coords and divide by `BlockScale`. `ChunkManagerComponent` uses **chunk-local** coords.
-- Mesh sections are assigned per block type. `ClearSection` must clear all sections for a chunk, tracked in `ActiveSections` map.
+- Mesh sections are assigned per block type. `ClearSection` destroys the chunk's `UProceduralMeshComponent` entirely, removing both mesh and collision.
 - The `Async()` call in `BuildSection` captures `this` — ensure `IsValid(this)` check on game thread callback.
 - `FBlockDefinition::MaterialPath` must start with `/Game/` (UE package path convention).
 - French language in game description/UI — keep comments/code in English, game text can be French.
