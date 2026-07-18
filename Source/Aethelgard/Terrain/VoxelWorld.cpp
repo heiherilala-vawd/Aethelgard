@@ -137,12 +137,13 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
         }
 
     float Scale = BlockScale;
-    UVoxelMeshGenerator* Gen = Mesher;
+    TWeakObjectPtr<UGreedyMeshGenerator> WeakGen(Mesher);
 
-    Async(EAsyncExecution::ThreadPool, [this, C, Center, NB, Scale, Gen]()
+    Async(EAsyncExecution::ThreadPool, [this, C, Center, NB, Scale, WeakGen]()
     {
+        if (!WeakGen.IsValid()) return;
         TMap<EBlockId, FMeshSectionData> Sections;
-        Gen->GenerateMesh(*Center, NB, Sections, Scale);
+        WeakGen->GenerateMesh(*Center, NB, Sections, Scale);
 
         FVector Offset((float)C.X * CHUNK_SIZE * Scale, (float)C.Y * CHUNK_SIZE * Scale, 0);
         for (auto& Pair : Sections)
