@@ -23,7 +23,7 @@ private:
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
         int32 Axis, int32 Sign, int32 LayerCount,
         TMap<EBlockId, FMeshSectionData>& Out, float Scale,
-        int32 MinZ, int32 MaxZ);
+        int32 MinZ, int32 MaxZ, int32 EstimatedQuads);
 
     void AddQuad(FMeshSectionData& Out, EBlockId BlockType,
         int32 Axis, int32 Sign, int32 Layer,

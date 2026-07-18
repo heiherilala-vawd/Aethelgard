@@ -25,6 +25,16 @@ struct FMeshSectionData
         Colors.Empty();
         Tangents.Empty();
     }
+
+    void ReserveEstimated(int32 NumQuads)
+    {
+        Vertices.Reserve(NumQuads * 4);
+        Triangles.Reserve(NumQuads * 6);
+        Normals.Reserve(NumQuads * 4);
+        UVs.Reserve(NumQuads * 4);
+        Colors.Reserve(NumQuads * 4);
+        Tangents.Reserve(NumQuads * 4);
+    }
 };
 
 UCLASS(Abstract)

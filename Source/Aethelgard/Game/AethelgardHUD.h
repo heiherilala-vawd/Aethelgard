@@ -25,4 +25,13 @@ private:
     void DrawLine(float X, float& Y, const FString& Text, const FColor& Color, float Scale = 1.0f);
     static FString GetBiomeName(float BiomeValue);
     static FString GetBlockName(EBlockId BlockId);
+
+    FString CachedPosition;
+    FString CachedChunk;
+    FString CachedBiome;
+    FString CachedBlock;
+    FString CachedSeed;
+    FString CachedFPS;
+    FString CachedChunks;
+    int32 DebugFrameCounter = 0;
 };

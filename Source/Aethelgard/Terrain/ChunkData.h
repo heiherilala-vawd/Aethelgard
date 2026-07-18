@@ -28,6 +28,7 @@ struct FChunkData
     TMap<int32, uint8> Overrides;
 
     bool bIsGenerated = false;
+    bool bHasOverrides = false;
 
     void Initialize(const FIntPoint& InPosition)
     {
@@ -36,6 +37,7 @@ struct FChunkData
         TopBlocks.Init(static_cast<uint8>(EBlockId::Stone), CHUNK_AREA * TOP_LAYERS);
         Overrides.Empty();
         bIsGenerated = false;
+        bHasOverrides = false;
     }
 
     static int32 GetColumnIndex(int32 X, int32 Y)
@@ -50,9 +52,12 @@ struct FChunkData
 
         int32 ColIdx = GetColumnIndex(X, Y);
 
-        int32 OvKey = Z * CHUNK_AREA + ColIdx;
-        if (const uint8* Ov = Overrides.Find(OvKey))
-            return static_cast<EBlockId>(*Ov);
+        if (bHasOverrides)
+        {
+            int32 OvKey = Z * CHUNK_AREA + ColIdx;
+            if (const uint8* Ov = Overrides.Find(OvKey))
+                return static_cast<EBlockId>(*Ov);
+        }
 
         uint8 H = HeightData[ColIdx];
 
@@ -77,7 +82,10 @@ struct FChunkData
         if (Block == EBlockId::Air)
             Overrides.Remove(OvKey);
         else
+        {
             Overrides.Add(OvKey, static_cast<uint8>(Block));
+            bHasOverrides = true;
+        }
     }
 
     void SetColumn(int32 X, int32 Y, uint8 Height, const uint8 Top[TOP_LAYERS])

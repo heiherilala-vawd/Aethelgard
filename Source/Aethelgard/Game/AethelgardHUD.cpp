@@ -85,6 +85,30 @@ void AAethelgardHUD::DrawDebugInfo()
     int32 CX = (BX >= 0 ? BX : BX - CHUNK_SIZE + 1) / CHUNK_SIZE;
     int32 CY = (BY >= 0 ? BY : BY - CHUNK_SIZE + 1) / CHUNK_SIZE;
 
+    float Delta = GetWorld()->GetDeltaSeconds();
+    float FPS = Delta > 0.0f ? 1.0f / Delta : 0.0f;
+
+    DebugFrameCounter++;
+    if (DebugFrameCounter % 15 == 0)
+    {
+        CachedPosition = FString::Printf(TEXT("Position :  X=%d  Y=%d  Z=%d"), BX, BY, BZ);
+        CachedChunk = FString::Printf(TEXT("Chunk :     X=%d  Y=%d"), CX, CY);
+        CachedFPS = FString::Printf(TEXT("FPS :       %.0f"), FPS);
+        CachedChunks = FString::Printf(TEXT("Chunks :    %d"), VW->GetChunkManager()->GetChunkCount());
+
+        UWorldGeneratorComponent* Gen = VW->GetWorldGenerator();
+        if (Gen)
+        {
+            float BiomeVal = UWorldGeneratorComponent::GetBiomeValue(BX, BY, Gen->Seed);
+            CachedBiome = FString::Printf(TEXT("Biome :     %s"), *GetBiomeName(BiomeVal));
+
+            EBlockId UnderFeet = VW->GetChunkManager()->GetBlock(BX, BY, BZ);
+            CachedBlock = FString::Printf(TEXT("Bloc :      %s"), *GetBlockName(UnderFeet));
+
+            CachedSeed = FString::Printf(TEXT("Seed :      %d"), Gen->Seed);
+        }
+    }
+
     float X = 20.0f;
     float Y = 20.0f;
 
@@ -95,29 +119,18 @@ void AAethelgardHUD::DrawDebugInfo()
     DrawLine(X, Y, TEXT("--- Aethelgard Debug ---"), HeaderColor, 1.2f);
     Y += 4.0f;
 
-    DrawLine(X, Y, FString::Printf(TEXT("Position :  X=%d  Y=%d  Z=%d"), BX, BY, BZ), LabelColor);
-    DrawLine(X, Y, FString::Printf(TEXT("Chunk :     X=%d  Y=%d"), CX, CY), LabelColor);
+    DrawLine(X, Y, CachedPosition, LabelColor);
+    DrawLine(X, Y, CachedChunk, LabelColor);
 
     UWorldGeneratorComponent* Gen = VW->GetWorldGenerator();
     if (Gen)
     {
-        float BiomeVal = UWorldGeneratorComponent::GetBiomeValue(BX, BY, Gen->Seed);
-        FString BiomeStr = GetBiomeName(BiomeVal);
-        DrawLine(X, Y, FString::Printf(TEXT("Biome :     %s"), *BiomeStr), ValueColor);
-
-        EBlockId UnderFeet = VW->GetChunkManager()->GetBlock(BX, BY, BZ);
-        FString BlockStr = GetBlockName(UnderFeet);
-        DrawLine(X, Y, FString::Printf(TEXT("Bloc :      %s"), *BlockStr), LabelColor);
-
+        DrawLine(X, Y, CachedBiome, ValueColor);
+        DrawLine(X, Y, CachedBlock, LabelColor);
         Y += 4.0f;
-
-        DrawLine(X, Y, FString::Printf(TEXT("Seed :      %d"), Gen->Seed), LabelColor);
+        DrawLine(X, Y, CachedSeed, LabelColor);
     }
 
-    float Delta = GetWorld()->GetDeltaSeconds();
-    float FPS = Delta > 0.0f ? 1.0f / Delta : 0.0f;
-    DrawLine(X, Y, FString::Printf(TEXT("FPS :       %.0f"), FPS), FPS > 30.0f ? ValueColor : FColor::Red);
-
-    int32 LoadedChunks = VW->GetChunkManager()->GetChunkCount();
-    DrawLine(X, Y, FString::Printf(TEXT("Chunks :    %d"), LoadedChunks), LabelColor);
+    DrawLine(X, Y, CachedFPS, FPS > 30.0f ? ValueColor : FColor::Red);
+    DrawLine(X, Y, CachedChunks, LabelColor);
 }

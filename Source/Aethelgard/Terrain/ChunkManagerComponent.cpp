@@ -19,6 +19,7 @@ void UChunkManagerComponent::UpdateCenter(const FIntPoint& CenterBlock)
         Keep.Add(C);
 
     TArray<FIntPoint> ToRemove;
+    ToRemove.Reserve(64);
     for (const auto& KV : AllChunks)
         if (!Keep.Contains(KV.Key))
             ToRemove.Add(KV.Key);
@@ -50,7 +51,7 @@ void UChunkManagerComponent::TickComponent(float DT, ELevelTick T, FActorCompone
         LaunchGen(C);
     }
 
-    for (int32 i = 0; i < 3 && MeshQueue.Num() > 0; i++)
+    for (int32 i = 0; i < 1 && MeshQueue.Num() > 0; i++)
     {
         FIntPoint C = MeshQueue.Last();
         MeshQueue.RemoveAt(MeshQueue.Num() - 1);

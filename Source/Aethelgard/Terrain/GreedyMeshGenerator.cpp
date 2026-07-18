@@ -68,12 +68,14 @@ void UGreedyMeshGenerator::GenerateMesh(
     int32 MinZ = Bounds.X;
     int32 MaxZ = Bounds.Y;
 
-    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
-    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
-    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
-    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
-    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ);
-    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ);
+    int32 EstimatedQuads = (CHUNK_SIZE * CHUNK_SIZE * (MaxZ - MinZ + 3)) / 4;
+
+    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
+    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
+    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
+    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
+    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
+    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
 }
 
 void UGreedyMeshGenerator::ProcessAxis(
@@ -81,7 +83,7 @@ void UGreedyMeshGenerator::ProcessAxis(
     const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
     int32 Axis, int32 Sign, int32 LayerCount,
     TMap<EBlockId, FMeshSectionData>& Out, float Scale,
-    int32 MinZ, int32 MaxZ)
+    int32 MinZ, int32 MaxZ, int32 EstimatedQuads)
 {
     int32 A1 = (Axis + 1) % 3;
     int32 A2 = (Axis + 2) % 3;
@@ -147,6 +149,8 @@ void UGreedyMeshGenerator::ProcessAxis(
                         Mask[(V + DV) * S1 + U + DU] = 0;
 
                 FMeshSectionData& Section = Out.FindOrAdd(Cur);
+                if (Section.Vertices.Num() == 0)
+                    Section.ReserveEstimated(EstimatedQuads);
 
                 int32 AdjU = bA1isZ ? (ZOff + U) : U;
                 int32 AdjV = bA2isZ ? (ZOff + V) : V;
