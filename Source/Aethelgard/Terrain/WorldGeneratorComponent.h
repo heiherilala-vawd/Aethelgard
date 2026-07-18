@@ -17,6 +17,39 @@ enum class EBiomeType : uint8
     MAX UMETA(Hidden)
 };
 
+enum class ENoiseLayer : int32
+{
+    NBase = 0,
+    NBlend,
+    NBiome1,
+    NBiome2,
+    NMineral1,
+    NMineral2,
+    NSediment,
+    NMountainBase,
+    NMountainRidge,
+    NMountainSlope,
+    NForest,
+    NForestHill,
+    NSand,
+    NSandFalloff,
+    NClaySediment,
+    NValley,
+    NSpillway,
+    NLayer1,
+    NLayer2,
+    NTree,
+    NMAX UMETA(Hidden)
+};
+
+enum class ELakeType : uint8
+{
+    None = 0,
+    River,
+    Basin,
+    Sea
+};
+
 USTRUCT()
 struct FBiomeParams
 {
@@ -37,20 +70,26 @@ struct FGeneratorParams
     GENERATED_BODY()
 
     int32 Seed = 0;
+
     float BaseHeight = 50.0f;
     float HeightScale = 25.0f;
     float NoiseScale = 0.005f;
     int32 Octaves = 3;
-    float WaterLevel = 35.0f;
 
-    float BiomeNoiseScale = 0.0015f;
-    float LakeNoiseScale = 0.003f;
-    float LakeThreshold = 0.85f;
-    float MinLakeHeight = 50.0f;
-    int32 LakeSearchRadius = 15;
-    float BeachSlopeRadius = 6.0f;
-    float BeachBlendPower = 2.0f;
-    int32 LakeClayDepth = 3;
+    float BiomeNoiseScale = 0.0000375f;
+
+    float SeaLevel = 30.0f;
+    float LakeLevel = 48.0f;
+    float LakeletLevel = 45.0f;
+
+    float BasinMarginSize = 5.0f;
+    float LakeFlatMargin = 3.0f;
+    float ClayDepth = 3.0f;
+
+    float BeachWidth = 3.0f;
+    float BeachSlope = 2.0f;
+
+    int32 BedrockLayers = 3;
 };
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
@@ -75,31 +114,34 @@ public:
     int32 Octaves = 3;
 
     UPROPERTY(EditAnywhere, Category = "Generation")
-    float WaterLevel = 35.0f;
+    float SeaLevel = 30.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation")
+    float LakeLevel = 48.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation")
+    float LakeletLevel = 45.0f;
 
     UPROPERTY(EditAnywhere, Category = "Biome")
-    float BiomeNoiseScale = 0.0015f;
+    float BiomeNoiseScale = 0.0000375f;
 
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    float LakeNoiseScale = 0.003f;
+    UPROPERTY(EditAnywhere, Category = "Lake")
+    float BasinMarginSize = 5.0f;
 
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    float LakeThreshold = 0.85f;
+    UPROPERTY(EditAnywhere, Category = "Lake")
+    float LakeFlatMargin = 3.0f;
 
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    float MinLakeHeight = 50.0f;
+    UPROPERTY(EditAnywhere, Category = "Lake")
+    float ClayDepth = 3.0f;
 
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    int32 LakeSearchRadius = 15;
+    UPROPERTY(EditAnywhere, Category = "Beach")
+    float BeachWidth = 3.0f;
 
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    float BeachSlopeRadius = 6.0f;
+    UPROPERTY(EditAnywhere, Category = "Beach")
+    float BeachSlope = 2.0f;
 
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    float BeachBlendPower = 2.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Biome")
-    int32 LakeClayDepth = 3;
+    UPROPERTY(EditAnywhere, Category = "Bedrock")
+    int32 BedrockLayers = 3;
 
     void GenerateChunk(FChunkData& ChunkData);
     float GetHeight(int32 WorldX, int32 WorldY) const;
@@ -112,15 +154,16 @@ public:
         P.HeightScale = HeightScale;
         P.NoiseScale = NoiseScale;
         P.Octaves = Octaves;
-        P.WaterLevel = WaterLevel;
         P.BiomeNoiseScale = BiomeNoiseScale;
-        P.LakeNoiseScale = LakeNoiseScale;
-        P.LakeThreshold = LakeThreshold;
-        P.MinLakeHeight = MinLakeHeight;
-        P.LakeSearchRadius = LakeSearchRadius;
-        P.BeachSlopeRadius = BeachSlopeRadius;
-        P.BeachBlendPower = BeachBlendPower;
-        P.LakeClayDepth = LakeClayDepth;
+        P.SeaLevel = SeaLevel;
+        P.LakeLevel = LakeLevel;
+        P.LakeletLevel = LakeletLevel;
+        P.BasinMarginSize = BasinMarginSize;
+        P.LakeFlatMargin = LakeFlatMargin;
+        P.ClayDepth = ClayDepth;
+        P.BeachWidth = BeachWidth;
+        P.BeachSlope = BeachSlope;
+        P.BedrockLayers = BedrockLayers;
         return P;
     }
 
@@ -128,6 +171,6 @@ public:
     static float GetBiomeValue(int32 WX, int32 WY, int32 Seed);
 
 private:
-    static void GetBlendedBiomeParams(float BiomeValue, int32 WX, int32 WY, const FGeneratorParams& P,
-        float& OutHeight, EBlockId& OutSurface, EBlockId& OutSubsurface, int32& OutSubsurfaceDepth);
+    static float ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P);
+    static ELakeType ClassifyZone(int32 WX, int32 WY, float Height, const FGeneratorParams& P);
 };

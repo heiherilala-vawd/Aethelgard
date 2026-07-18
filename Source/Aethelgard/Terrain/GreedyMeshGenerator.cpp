@@ -2,6 +2,60 @@
 
 #include "Terrain/GreedyMeshGenerator.h"
 
+FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
+    const FChunkData& CD,
+    const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB) const
+{
+    int32 MinZ = WORLD_HEIGHT;
+    int32 MaxZ = 0;
+
+    for (int32 X = -1; X <= CHUNK_SIZE; X++)
+    {
+        for (int32 Y = -1; Y <= CHUNK_SIZE; Y++)
+        {
+            const FChunkData* Chunk = nullptr;
+            int32 LX = X, LY = Y;
+
+            if (X >= 0 && X < CHUNK_SIZE && Y >= 0 && Y < CHUNK_SIZE)
+            {
+                Chunk = &CD;
+            }
+            else
+            {
+                int32 WX = CD.Position.X * CHUNK_SIZE + X;
+                int32 WY = CD.Position.Y * CHUNK_SIZE + Y;
+                FIntPoint NC(FMath::FloorToInt((float)WX / CHUNK_SIZE),
+                              FMath::FloorToInt((float)WY / CHUNK_SIZE));
+                if (NC == CD.Position)
+                {
+                    Chunk = &CD;
+                }
+                else
+                {
+                    const auto* NP = NB.Find(NC);
+                    if (!NP || !NP->IsValid() || !(*NP)->bIsGenerated) continue;
+                    Chunk = NP->Get();
+                    LX = WX - NC.X * CHUNK_SIZE;
+                    LY = WY - NC.Y * CHUNK_SIZE;
+                }
+            }
+
+            int32 ColIdx = FChunkData::GetColumnIndex(LX, LY);
+            int32 H = Chunk->HeightData[ColIdx];
+            int32 W = Chunk->WaterData[ColIdx];
+
+            if (H > 0) { MinZ = FMath::Min(MinZ, H); MaxZ = FMath::Max(MaxZ, H); }
+            if (W > 0) { MinZ = FMath::Min(MinZ, W); MaxZ = FMath::Max(MaxZ, W); }
+        }
+    }
+
+    if (MinZ > MaxZ) { MinZ = 0; MaxZ = 0; }
+    MinZ = FMath::Max(MinZ - 1, 0);
+    MaxZ = FMath::Min(MaxZ + 1, WORLD_HEIGHT - 1);
+
+    return FIntPoint(MinZ, MaxZ);
+}
+
 void UGreedyMeshGenerator::GenerateMesh(
     const FChunkData& ChunkData,
     const TMap<FIntPoint, TSharedPtr<FChunkData>>& Neighbors,
@@ -12,26 +66,38 @@ void UGreedyMeshGenerator::GenerateMesh(
         Pair.Value.Reset();
     OutSections.Empty();
 
-    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale);
-    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale);
+    FIntPoint Bounds = GetChunkZBounds(ChunkData, Neighbors);
+    int32 MinZ = Bounds.X;
+    int32 MaxZ = Bounds.Y;
+
+    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
+    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
+    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
+    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ);
+    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ);
+    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ);
 }
 
 void UGreedyMeshGenerator::ProcessAxis(
     const FChunkData& CD,
     const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
     int32 Axis, int32 Sign, int32 LayerCount,
-    TMap<EBlockId, FMeshSectionData>& Out, float Scale)
+    TMap<EBlockId, FMeshSectionData>& Out, float Scale,
+    int32 MinZ, int32 MaxZ)
 {
     int32 A1 = (Axis + 1) % 3;
     int32 A2 = (Axis + 2) % 3;
-    int32 S1 = (A1 == 2) ? WORLD_HEIGHT : CHUNK_SIZE;
-    int32 S2 = (A2 == 2) ? WORLD_HEIGHT : CHUNK_SIZE;
+    bool bA1isZ = (A1 == 2);
+    bool bA2isZ = (A2 == 2);
+    bool bAxisIsZ = (Axis == 2);
 
-    for (int32 L = 0; L < LayerCount; L++)
+    int32 ZOff = MinZ - 1;
+
+    int32 S1 = bA1isZ ? (MaxZ - MinZ + 3) : CHUNK_SIZE;
+    int32 S2 = bA2isZ ? (MaxZ - MinZ + 3) : CHUNK_SIZE;
+    int32 RealLayerCount = bAxisIsZ ? (MaxZ - MinZ + 3) : LayerCount;
+
+    for (int32 L = 0; L < RealLayerCount; L++)
     {
         TArray<uint8> Mask; Mask.SetNum(S1 * S2);
         TArray<EBlockId> Types; Types.SetNum(S1 * S2);
@@ -40,7 +106,11 @@ void UGreedyMeshGenerator::ProcessAxis(
         for (int32 U = 0; U < S1; U++)
             for (int32 V = 0; V < S2; V++)
             {
-                int32 P[3] = {}; P[Axis] = L; P[A1] = U; P[A2] = V;
+                int32 P[3] = {};
+                P[Axis] = bAxisIsZ ? (ZOff + L) : L;
+                P[A1]   = bA1isZ   ? (ZOff + U) : U;
+                P[A2]   = bA2isZ   ? (ZOff + V) : V;
+
                 EBlockId B = GetBlock(CD, NB, P[0], P[1], P[2]);
                 if (B == EBlockId::Air || B >= EBlockId::MAX) continue;
 
@@ -84,7 +154,11 @@ void UGreedyMeshGenerator::ProcessAxis(
                         Mask[(V + DV) * S1 + U + DU] = 0;
 
                 FMeshSectionData& Section = Out.FindOrAdd(Cur);
-                AddQuad(Section, Cur, Axis, Sign, L, U, V, W, H, Scale);
+
+                int32 AdjU = bA1isZ ? (ZOff + U) : U;
+                int32 AdjV = bA2isZ ? (ZOff + V) : V;
+                int32 AdjLayer = bAxisIsZ ? (ZOff + L) : L;
+                AddQuad(Section, Cur, Axis, Sign, AdjLayer, AdjU, AdjV, W, H, Scale);
             }
     }
 }

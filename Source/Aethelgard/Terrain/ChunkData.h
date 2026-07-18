@@ -9,6 +9,7 @@
 constexpr int32 CHUNK_SIZE = 32;
 constexpr int32 CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
 constexpr int32 WORLD_HEIGHT = 256;
+constexpr int32 TOP_LAYERS = 3;
 
 USTRUCT()
 struct FChunkData
@@ -16,32 +17,83 @@ struct FChunkData
     GENERATED_BODY()
 
     FIntPoint Position;
-    TArray<uint8> Blocks;
+
+    UPROPERTY()
+    TArray<uint8> HeightData;
+
+    UPROPERTY()
+    TArray<uint8> WaterData;
+
+    UPROPERTY()
+    TArray<uint8> TopBlocks;
+
+    UPROPERTY()
+    TMap<int32, uint8> Overrides;
+
     bool bIsGenerated = false;
 
     void Initialize(const FIntPoint& InPosition)
     {
         Position = InPosition;
-        Blocks.Init(static_cast<uint8>(EBlockId::Air), CHUNK_AREA * WORLD_HEIGHT);
+        HeightData.Init(0, CHUNK_AREA);
+        WaterData.Init(0, CHUNK_AREA);
+        TopBlocks.Init(static_cast<uint8>(EBlockId::Stone), CHUNK_AREA * TOP_LAYERS);
+        Overrides.Empty();
         bIsGenerated = false;
     }
 
-    int32 GetIndex(int32 X, int32 Y, int32 Z) const
+    static int32 GetColumnIndex(int32 X, int32 Y)
     {
-        return (Z * CHUNK_SIZE + Y) * CHUNK_SIZE + X;
+        return Y * CHUNK_SIZE + X;
     }
 
     EBlockId GetBlock(int32 X, int32 Y, int32 Z) const
     {
         if (X < 0 || X >= CHUNK_SIZE || Y < 0 || Y >= CHUNK_SIZE || Z < 0 || Z >= WORLD_HEIGHT)
             return EBlockId::Air;
-        return static_cast<EBlockId>(Blocks[GetIndex(X, Y, Z)]);
+
+        int32 ColIdx = GetColumnIndex(X, Y);
+
+        int32 OvKey = Z * CHUNK_AREA + ColIdx;
+        if (const uint8* Ov = Overrides.Find(OvKey))
+            return static_cast<EBlockId>(*Ov);
+
+        uint8 H = HeightData[ColIdx];
+        uint8 W = WaterData[ColIdx];
+
+        if (Z >= H)
+        {
+            if (W > 0 && Z < W) return EBlockId::Water;
+            return EBlockId::Air;
+        }
+
+        int32 LayerIdx = H - 1 - Z;
+        if (LayerIdx < TOP_LAYERS)
+            return static_cast<EBlockId>(TopBlocks[ColIdx * TOP_LAYERS + LayerIdx]);
+
+        return EBlockId::Stone;
     }
 
-    void SetBlock(int32 X, int32 Y, int32 Z, EBlockId InBlock)
+    void SetBlock(int32 X, int32 Y, int32 Z, EBlockId Block)
     {
         if (X < 0 || X >= CHUNK_SIZE || Y < 0 || Y >= CHUNK_SIZE || Z < 0 || Z >= WORLD_HEIGHT)
             return;
-        Blocks[GetIndex(X, Y, Z)] = static_cast<uint8>(InBlock);
+
+        int32 ColIdx = GetColumnIndex(X, Y);
+        int32 OvKey = Z * CHUNK_AREA + ColIdx;
+
+        if (Block == EBlockId::Air)
+            Overrides.Remove(OvKey);
+        else
+            Overrides.Add(OvKey, static_cast<uint8>(Block));
+    }
+
+    void SetColumn(int32 X, int32 Y, uint8 Height, uint8 Water, const uint8 Top[TOP_LAYERS])
+    {
+        int32 ColIdx = GetColumnIndex(X, Y);
+        HeightData[ColIdx] = Height;
+        WaterData[ColIdx] = Water;
+        for (int32 i = 0; i < TOP_LAYERS; i++)
+            TopBlocks[ColIdx * TOP_LAYERS + i] = Top[i];
     }
 };

@@ -22,7 +22,8 @@ private:
     void ProcessAxis(const FChunkData& CD,
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
         int32 Axis, int32 Sign, int32 LayerCount,
-        TMap<EBlockId, FMeshSectionData>& Out, float Scale);
+        TMap<EBlockId, FMeshSectionData>& Out, float Scale,
+        int32 MinZ, int32 MaxZ);
 
     void AddQuad(FMeshSectionData& Out, EBlockId BlockType,
         int32 Axis, int32 Sign, int32 Layer,
@@ -31,4 +32,7 @@ private:
     EBlockId GetBlock(const FChunkData& CD,
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
         int32 X, int32 Y, int32 Z) const;
+
+    FIntPoint GetChunkZBounds(const FChunkData& CD,
+        const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB) const;
 };
