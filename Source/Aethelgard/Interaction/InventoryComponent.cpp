@@ -92,6 +92,41 @@ void UInventoryComponent::InitializeDefaultInventory()
     AddItem(SandItem, 32);
 }
 
+TArray<FInventorySlotSaveData> UInventoryComponent::GetSaveData() const
+{
+    TArray<FInventorySlotSaveData> Result;
+    for (const FItemStack& Stack : Slots)
+    {
+        if (Stack.Item && Stack.Quantity > 0)
+        {
+            FInventorySlotSaveData Slot;
+            Slot.BlockId = static_cast<uint8>(Stack.Item->BlockId);
+            Slot.Quantity = Stack.Quantity;
+            Result.Add(Slot);
+        }
+    }
+    return Result;
+}
+
+void UInventoryComponent::LoadFromSaveData(const TArray<FInventorySlotSaveData>& Data)
+{
+    Slots.SetNum(MaxSlots);
+    for (FItemStack& Stack : Slots)
+    {
+        Stack.Item = nullptr;
+        Stack.Quantity = 0;
+    }
+
+    for (const FInventorySlotSaveData& Saved : Data)
+    {
+        EBlockId BlockId = static_cast<EBlockId>(Saved.BlockId);
+        if (BlockId == EBlockId::Air || BlockId >= EBlockId::MAX) continue;
+
+        UItemBlock* Item = UItemBlock::Create(BlockId, this);
+        AddItem(Item, Saved.Quantity);
+    }
+}
+
 int32 UInventoryComponent::FindSlot(EBlockId BlockId) const
 {
     for (int32 i = 0; i < Slots.Num(); i++)

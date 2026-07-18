@@ -12,6 +12,7 @@ class UWorldGeneratorComponent;
 class UGreedyMeshGenerator;
 class UNetworkSystemComponent;
 class UProceduralMeshComponent;
+struct FInventorySlotSaveData;
 
 UCLASS(Placeable)
 class AVoxelWorld : public AActor
@@ -32,8 +33,8 @@ public:
 
     EBlockId GetBlock(int32 WX, int32 WY, int32 WZ) const;
     bool SetBlock(int32 WX, int32 WY, int32 WZ, EBlockId B);
-    void SaveWorld(const FString& Slot);
-    void LoadWorld(const FString& Slot);
+    void SaveWorld(const FString& Slot, const TArray<FInventorySlotSaveData>& Inventory);
+    void LoadWorld(const FString& Slot, TArray<FInventorySlotSaveData>& OutInventory);
 
     UChunkManagerComponent* GetChunkManager() const { return ChunkManager; }
     UWorldGeneratorComponent* GetWorldGenerator() const { return Generator; }

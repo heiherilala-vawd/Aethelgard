@@ -6,6 +6,7 @@
 #include "Game/AethelgardHUD.h"
 #include "Terrain/VoxelWorld.h"
 #include "Terrain/SaveSystem.h"
+#include "Interaction/InventoryComponent.h"
 #include "Terrain/NetworkSystemComponent.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -57,21 +58,37 @@ void AAethelgardGameMode::InitGameState()
 
 void AAethelgardGameMode::SaveGame()
 {
-    if (VoxelWorld)
+    if (!VoxelWorld) return;
+
+    TArray<FInventorySlotSaveData> InventoryData;
+    APawn* Pawn = GetWorld()->GetFirstPlayerController()->GetPawn();
+    if (Pawn)
     {
-        VoxelWorld->SaveWorld(CurrentSlotName);
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Monde sauvegardé"));
+        UInventoryComponent* Inv = Pawn->FindComponentByClass<UInventoryComponent>();
+        if (Inv) InventoryData = Inv->GetSaveData();
     }
+
+    VoxelWorld->SaveWorld(CurrentSlotName, InventoryData);
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Monde sauvegardé"));
 }
 
 void AAethelgardGameMode::LoadGame(const FString& SlotName)
 {
-    if (VoxelWorld)
+    if (!VoxelWorld) return;
+
+    CurrentSlotName = SlotName;
+
+    TArray<FInventorySlotSaveData> InventoryData;
+    VoxelWorld->LoadWorld(SlotName, InventoryData);
+
+    APawn* Pawn = GetWorld()->GetFirstPlayerController()->GetPawn();
+    if (Pawn)
     {
-        CurrentSlotName = SlotName;
-        VoxelWorld->LoadWorld(SlotName);
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Monde chargé"));
+        UInventoryComponent* Inv = Pawn->FindComponentByClass<UInventoryComponent>();
+        if (Inv) Inv->LoadFromSaveData(InventoryData);
     }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Monde chargé"));
 }

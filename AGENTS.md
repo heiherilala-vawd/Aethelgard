@@ -61,6 +61,9 @@ if (Target.bBuildEditor)
 | `VoxelWorld.h/.cpp` | Per-chunk mesh components, material loading, tick loop |
 | `WorldGeneratorComponent.h/.cpp` | Biome params, noise, height computation, lake generation |
 | `GreedyMeshGenerator.h/.cpp` | Greedy mesh output per block type |
+| `SaveSystem.h/.cpp` | `USaveGame` subclass, block changes + inventory serialization via `UGameplayStatics` |
+| `InventoryComponent.h/.cpp` | 36-slot inventory, `AddItem`/`RemoveItem`, save/load via `FInventorySlotSaveData` |
+| `ItemBlock.h` | `UItemBlock` UObject (BlockId, DisplayName, MaxStack, TintColor) |
 | `AethelgardHUD.h/.cpp` | Debug HUD overlay |
 
 ## Pitfalls
@@ -69,4 +72,6 @@ if (Target.bBuildEditor)
 - Mesh sections are assigned per block type. `ClearSection` destroys the chunk's `UProceduralMeshComponent` entirely, removing both mesh and collision.
 - The `Async()` call in `BuildSection` captures `this` — ensure `IsValid(this)` check on game thread callback.
 - `FBlockDefinition::MaterialPath` must start with `/Game/` (UE package path convention).
+- Inventory is saved as `TArray<FInventorySlotSaveData>` (BlockId + Quantity pairs), NOT as UObject pointers. `LoadFromSaveData` recreates `UItemBlock` objects from the saved data.
+- `SaveGame`/`LoadGame` are `UFUNCTION(Exec)` — callable from console. GameMode orchestrates: gets pawn's inventory, passes through VoxelWorld to SaveSystem.
 - French language in game description/UI — keep comments/code in English, game text can be French.

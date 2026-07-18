@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Interaction/ItemBlock.h"
+#include "Terrain/SaveSystem.h"
 #include "InventoryComponent.generated.h"
 
 USTRUCT()
@@ -45,6 +46,8 @@ public:
     const TArray<FItemStack>& GetSlots() const { return Slots; }
 
     void InitializeDefaultInventory();
+    TArray<FInventorySlotSaveData> GetSaveData() const;
+    void LoadFromSaveData(const TArray<FInventorySlotSaveData>& Data);
 
 private:
     UPROPERTY()

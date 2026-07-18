@@ -44,7 +44,7 @@ void USaveSystem::RecordModification(const FIntVector& WorldPos, EBlockId OldBlo
     OnBlockModified.Broadcast(WorldPos, OldBlock, NewBlock);
 }
 
-bool USaveSystem::SaveWorld(const FString& InSlotName, int32 WorldSeed)
+bool USaveSystem::SaveWorld(const FString& InSlotName, int32 WorldSeed, const TArray<FInventorySlotSaveData>& Inventory)
 {
     UWorldSaveData* SaveData = Cast<UWorldSaveData>(
         UGameplayStatics::CreateSaveGameObject(UWorldSaveData::StaticClass()));
@@ -53,6 +53,7 @@ bool USaveSystem::SaveWorld(const FString& InSlotName, int32 WorldSeed)
     SaveData->WorldSeed = WorldSeed;
     SaveData->SlotName = InSlotName;
     SaveData->SaveTime = FDateTime::Now();
+    SaveData->SavedInventory = Inventory;
 
     for (const auto& Pair : PendingChanges)
     {
@@ -68,7 +69,7 @@ bool USaveSystem::SaveWorld(const FString& InSlotName, int32 WorldSeed)
     return UGameplayStatics::SaveGameToSlot(SaveData, InSlotName, 0);
 }
 
-bool USaveSystem::LoadWorld(const FString& InSlotName, int32& OutWorldSeed, TArray<FChunkSaveData>& OutChunks)
+bool USaveSystem::LoadWorld(const FString& InSlotName, int32& OutWorldSeed, TArray<FChunkSaveData>& OutChunks, TArray<FInventorySlotSaveData>& OutInventory)
 {
     if (!UGameplayStatics::DoesSaveGameExist(InSlotName, 0)) return false;
 
@@ -78,6 +79,7 @@ bool USaveSystem::LoadWorld(const FString& InSlotName, int32& OutWorldSeed, TArr
 
     OutWorldSeed = SaveData->WorldSeed;
     OutChunks = SaveData->ModifiedChunks;
+    OutInventory = SaveData->SavedInventory;
 
     PendingChanges.Empty();
     for (const FChunkSaveData& ChunkData : OutChunks)

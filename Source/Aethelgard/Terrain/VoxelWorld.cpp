@@ -234,19 +234,19 @@ bool AVoxelWorld::SetBlock(int32 WX, int32 WY, int32 WZ, EBlockId B)
     return ChunkManager->SetBlock((int32)(WX / BlockScale), (int32)(WY / BlockScale), (int32)(WZ / BlockScale), B);
 }
 
-void AVoxelWorld::SaveWorld(const FString& Slot)
+void AVoxelWorld::SaveWorld(const FString& Slot, const TArray<FInventorySlotSaveData>& Inventory)
 {
     USaveSystem* SS = GetGameInstance()->GetSubsystem<USaveSystem>();
-    if (SS) SS->SaveWorld(Slot, Seed);
+    if (SS) SS->SaveWorld(Slot, Seed, Inventory);
 }
 
-void AVoxelWorld::LoadWorld(const FString& Slot)
+void AVoxelWorld::LoadWorld(const FString& Slot, TArray<FInventorySlotSaveData>& OutInventory)
 {
     USaveSystem* SS = GetGameInstance()->GetSubsystem<USaveSystem>();
     if (!SS) return;
     int32 LS = 0;
     TArray<FChunkSaveData> Mods;
-    if (SS->LoadWorld(Slot, LS, Mods))
+    if (SS->LoadWorld(Slot, LS, Mods, OutInventory))
     {
         Seed = LS;
         Generator->Seed = LS;
