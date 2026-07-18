@@ -7,6 +7,8 @@
 #include "Terrain/BlockRegistry.h"
 #include "AethelgardHUD.generated.h"
 
+class AVoxelWorld;
+
 UCLASS()
 class AAethelgardHUD : public AHUD
 {
@@ -34,4 +36,5 @@ private:
     FString CachedFPS;
     FString CachedChunks;
     int32 DebugFrameCounter = 0;
+    TWeakObjectPtr<AVoxelWorld> CachedVoxelWorld;
 };

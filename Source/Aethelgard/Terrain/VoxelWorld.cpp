@@ -40,6 +40,7 @@ AVoxelWorld::AVoxelWorld()
 void AVoxelWorld::BeginPlay()
 {
     Super::BeginPlay();
+    UE_LOG(LogTemp, Warning, TEXT("[VoxelWorld] BeginPlay called, Seed=%d"), Seed);
     Init();
     LoadBlockMaterials();
     GetWorldTimerManager().SetTimer(FollowTimer, this, &AVoxelWorld::TickFollowPlayer, 0.3f, true);
@@ -113,6 +114,7 @@ void AVoxelWorld::EnsureBlockMaterialsExist()
 
 void AVoxelWorld::OnChunkReady(const FIntPoint& C)
 {
+    UE_LOG(LogTemp, Warning, TEXT("[VoxelWorld] OnChunkReady (%d,%d)"), C.X, C.Y);
     BuildSection(C);
 }
 
@@ -165,7 +167,16 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
 
                 if (Mesh.Vertices.Num() == 0) continue;
 
-                int32 SI = NextSection++;
+                int32 SI;
+                if (FreeSections.Num() > 0)
+                {
+                    SI = *FreeSections.begin();
+                    FreeSections.Remove(SI);
+                }
+                else
+                {
+                    SI = NextSection++;
+                }
                 ChunkSections.Add(BlockType, SI);
 
                 MainMesh->CreateMeshSection(SI, Mesh.Vertices, Mesh.Triangles,
@@ -186,20 +197,33 @@ void AVoxelWorld::ClearSection(const FIntPoint& C)
     if (!ChunkSections) return;
 
     for (auto& Pair : *ChunkSections)
+    {
         MainMesh->ClearMeshSection(Pair.Value);
+        FreeSections.Add(Pair.Value);
+    }
 
     ActiveSections.Remove(C);
 }
 
 void AVoxelWorld::TickFollowPlayer()
 {
+    FVector Pos;
     APlayerController* PC = GetWorld()->GetFirstPlayerController();
     if (PC && PC->GetPawn())
     {
-        FVector Pos = PC->GetPawn()->GetActorLocation();
-        FIntPoint BC((int32)(Pos.X / BlockScale), (int32)(Pos.Y / BlockScale));
-        ChunkManager->UpdateCenter(BC);
+        Pos = PC->GetPawn()->GetActorLocation();
     }
+    else
+    {
+        Pos = GetActorLocation();
+    }
+    FIntPoint BC((int32)(Pos.X / BlockScale), (int32)(Pos.Y / BlockScale));
+    UE_LOG(LogTemp, Warning, TEXT("[VoxelWorld] TickFollowPlayer: BC=(%d,%d) Chunks=%d GenQueue=%d MeshQueue=%d"),
+        BC.X, BC.Y,
+        ChunkManager->GetChunkCount(),
+        ChunkManager->GetGenQueueNum(),
+        ChunkManager->GetMeshQueueNum());
+    ChunkManager->UpdateCenter(BC);
 }
 
 EBlockId AVoxelWorld::GetBlock(int32 WX, int32 WY, int32 WZ) const

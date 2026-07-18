@@ -33,7 +33,6 @@ void UNetworkSystemComponent::ServerRequestModifyBlock_Implementation(int32 X, i
     if (!HasAuthority())
         return;
 
-    OnBlockChangeReceived.Broadcast(X, Y, Z, NewBlockId);
     MulticastBlockModified(X, Y, Z, NewBlockId);
 }
 
@@ -47,7 +46,6 @@ void UNetworkSystemComponent::ServerRequestPlaceBlock_Implementation(int32 X, in
     if (!HasAuthority())
         return;
 
-    OnBlockChangeReceived.Broadcast(X, Y, Z, BlockId);
     MulticastBlockModified(X, Y, Z, BlockId);
 }
 

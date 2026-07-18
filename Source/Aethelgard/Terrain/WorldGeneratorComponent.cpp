@@ -13,14 +13,27 @@ static const FBiomeParams BiomeParams[4] = {
 
 static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed)
 {
+    static TMap<int32, FVector2D> OffsetCache;
+
     float Value = 0.0f, Amplitude = 1.0f, MaxAmp = 0.0f, Freq = 1.0f;
     for (int32 i = 0; i < Octaves; i++)
     {
-        FRandomStream Stream(Seed + i * 7919);
-        float OX = Stream.FRand() * 10000.0f, OY = Stream.FRand() * 10000.0f;
+        int32 Key = Seed + i * 7919;
+        FVector2D* Cached = OffsetCache.Find(Key);
+        FVector2D Oxy;
+        if (Cached)
+        {
+            Oxy = *Cached;
+        }
+        else
+        {
+            FRandomStream Stream(Key);
+            Oxy = FVector2D(Stream.FRand() * 10000.0f, Stream.FRand() * 10000.0f);
+            OffsetCache.Add(Key, Oxy);
+        }
         Value += Amplitude * FMath::PerlinNoise2D(FVector2D(
-            X * Scale * Freq + OX,
-            Y * Scale * Freq + OY));
+            X * Scale * Freq + Oxy.X,
+            Y * Scale * Freq + Oxy.Y));
         MaxAmp += Amplitude;
         Amplitude *= 0.5f;
         Freq *= 2.0f;

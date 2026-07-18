@@ -18,12 +18,12 @@ struct FMeshSectionData
 
     void Reset()
     {
-        Vertices.Empty();
-        Triangles.Empty();
-        Normals.Empty();
-        UVs.Empty();
-        Colors.Empty();
-        Tangents.Empty();
+        Vertices.SetNum(0, EAllowShrinking::No);
+        Triangles.SetNum(0, EAllowShrinking::No);
+        Normals.SetNum(0, EAllowShrinking::No);
+        UVs.SetNum(0, EAllowShrinking::No);
+        Colors.SetNum(0, EAllowShrinking::No);
+        Tangents.SetNum(0, EAllowShrinking::No);
     }
 
     void ReserveEstimated(int32 NumQuads)

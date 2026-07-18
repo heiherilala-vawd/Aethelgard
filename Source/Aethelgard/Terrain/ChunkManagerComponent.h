@@ -28,6 +28,8 @@ public:
 
     TSharedPtr<FChunkData> GetChunk(const FIntPoint& C) const;
     int32 GetChunkCount() const { return AllChunks.Num(); }
+    int32 GetGenQueueNum() const { return GenQueue.Num(); }
+    int32 GetMeshQueueNum() const { return MeshQueue.Num(); }
     EBlockId GetBlock(int32 BX, int32 BY, int32 BZ) const;
     bool SetBlock(int32 BX, int32 BY, int32 BZ, EBlockId Block);
 

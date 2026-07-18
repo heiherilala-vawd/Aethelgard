@@ -51,7 +51,7 @@ void UChunkManagerComponent::TickComponent(float DT, ELevelTick T, FActorCompone
         LaunchGen(C);
     }
 
-    for (int32 i = 0; i < 1 && MeshQueue.Num() > 0; i++)
+    for (int32 i = 0; i < 3 && MeshQueue.Num() > 0; i++)
     {
         FIntPoint C = MeshQueue.Last();
         MeshQueue.RemoveAt(MeshQueue.Num() - 1);
@@ -161,9 +161,20 @@ bool UChunkManagerComponent::SetBlock(int32 BX, int32 BY, int32 BZ, EBlockId Blo
 
     (*D)->SetBlock(BX - C.X * CHUNK_SIZE, BY - C.Y * CHUNK_SIZE, BZ, Block);
 
+    int32 LX = BX - C.X * CHUNK_SIZE;
+    int32 LY = BY - C.Y * CHUNK_SIZE;
+
+    bool bOnBorderX = (LX == 0 || LX == CHUNK_SIZE - 1);
+    bool bOnBorderY = (LY == 0 || LY == CHUNK_SIZE - 1);
+
     for (int32 DY = -1; DY <= 1; DY++)
         for (int32 DX = -1; DX <= 1; DX++)
+        {
+            if (DX == 0 && DY == 0) continue;
+            if (DX != 0 && !bOnBorderX) continue;
+            if (DY != 0 && !bOnBorderY) continue;
             EnqueueMesh(FIntPoint(C.X + DX, C.Y + DY));
+        }
 
     return true;
 }

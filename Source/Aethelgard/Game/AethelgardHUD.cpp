@@ -65,14 +65,20 @@ void AAethelgardHUD::DrawDebugInfo()
     FVector Loc = PC->GetPawn()->GetActorLocation();
 
     AAethelgardGameMode* GM = Cast<AAethelgardGameMode>(GetWorld()->GetAuthGameMode());
-    AVoxelWorld* VW = GM ? GM->GetVoxelWorld() : nullptr;
+    AVoxelWorld* VW = CachedVoxelWorld.Get();
     if (!VW)
     {
-        for (TActorIterator<AVoxelWorld> It(GetWorld()); It; ++It)
+        VW = GM ? GM->GetVoxelWorld() : nullptr;
+        if (!VW)
         {
-            VW = *It;
-            break;
+            for (TActorIterator<AVoxelWorld> It(GetWorld()); It; ++It)
+            {
+                VW = *It;
+                break;
+            }
         }
+        if (VW)
+            CachedVoxelWorld = VW;
     }
     if (!VW) return;
 
