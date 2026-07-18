@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Terrain/ChunkData.h"
+#include "AethelgardTerrain/ChunkData.h"
 #include "ProceduralMeshComponent.h"
 #include "VoxelMeshGenerator.generated.h"
 
-struct FMeshSectionData
+struct AETHELGARDTERRAIN_API FMeshSectionData
 {
     TArray<FVector> Vertices;
     TArray<int32> Triangles;
@@ -38,7 +38,7 @@ struct FMeshSectionData
 };
 
 UCLASS(Abstract)
-class UVoxelMeshGenerator : public UObject
+class AETHELGARDTERRAIN_API UVoxelMeshGenerator : public UObject
 {
     GENERATED_BODY()
 

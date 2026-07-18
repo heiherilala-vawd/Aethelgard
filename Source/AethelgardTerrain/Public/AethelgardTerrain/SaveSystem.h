@@ -4,12 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
-#include "Terrain/BlockRegistry.h"
-#include "Terrain/ChunkData.h"
+#include "AethelgardTerrain/BlockRegistry.h"
+#include "AethelgardTerrain/ChunkData.h"
 #include "SaveSystem.generated.h"
 
 USTRUCT()
-struct FBlockChange
+struct AETHELGARDTERRAIN_API FBlockChange
 {
     GENERATED_BODY()
 
@@ -30,7 +30,7 @@ struct FBlockChange
 };
 
 USTRUCT()
-struct FChunkSaveData
+struct AETHELGARDTERRAIN_API FChunkSaveData
 {
     GENERATED_BODY()
 
@@ -42,7 +42,7 @@ struct FChunkSaveData
 };
 
 USTRUCT()
-struct FInventorySlotSaveData
+struct AETHELGARDTERRAIN_API FInventorySlotSaveData
 {
     GENERATED_BODY()
 
@@ -54,7 +54,7 @@ struct FInventorySlotSaveData
 };
 
 UCLASS()
-class UWorldSaveData : public USaveGame
+class AETHELGARDTERRAIN_API UWorldSaveData : public USaveGame
 {
     GENERATED_BODY()
 
@@ -78,7 +78,7 @@ public:
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnBlockModified, const FIntVector&, EBlockId, EBlockId);
 
 UCLASS()
-class USaveSystem : public UGameInstanceSubsystem
+class AETHELGARDTERRAIN_API USaveSystem : public UGameInstanceSubsystem
 {
     GENERATED_BODY()
 

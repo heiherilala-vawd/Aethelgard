@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Terrain/VoxelWorldSubsystem.h"
-#include "Terrain/VoxelWorld.h"
+#include "AethelgardTerrain/VoxelWorldSubsystem.h"
+#include "AethelgardTerrain/VoxelWorld.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 

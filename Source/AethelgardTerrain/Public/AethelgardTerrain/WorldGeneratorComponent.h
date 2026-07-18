@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Terrain/ChunkData.h"
+#include "AethelgardTerrain/ChunkData.h"
 #include "WorldGeneratorComponent.generated.h"
 
 UENUM()
@@ -44,7 +44,7 @@ enum class ENoiseLayer : int32
 };
 
 USTRUCT()
-struct FBiomeParams
+struct AETHELGARDTERRAIN_API FBiomeParams
 {
     GENERATED_BODY()
 
@@ -58,13 +58,15 @@ struct FBiomeParams
     float MicroNoiseScale = 0.08f;
     float MicroAmplitude = 3.0f;
     int32 MicroOctaves = 1;
+    float PreferredHeight = 60.0f;
+    float HeightFalloff = 50.0f;
     EBlockId SurfaceBlock = EBlockId::Grass;
     EBlockId SubsurfaceBlock = EBlockId::Dirt;
     int32 SubsurfaceDepth = 3;
 };
 
 USTRUCT()
-struct FGeneratorParams
+struct AETHELGARDTERRAIN_API FGeneratorParams
 {
     GENERATED_BODY()
 
@@ -82,6 +84,9 @@ struct FGeneratorParams
     float MicroAmplitude = 3.0f;
     int32 MicroOctaves = 1;
 
+    float PreferredHeight = 60.0f;
+    float HeightFalloff = 50.0f;
+
     float BiomeNoiseScale = 0.00075f;
 
     float BeachWidth = 3.0f;
@@ -90,14 +95,14 @@ struct FGeneratorParams
     int32 BedrockLayers = 3;
 };
 
-struct FColumnHeightInfo
+struct AETHELGARDTERRAIN_API FColumnHeightInfo
 {
     float Height = 0.0f;
     int32 DominantIdx = 0;
 };
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
-class UWorldGeneratorComponent : public UActorComponent
+class AETHELGARDTERRAIN_API UWorldGeneratorComponent : public UActorComponent
 {
     GENERATED_BODY()
 
@@ -132,6 +137,12 @@ public:
     UPROPERTY(EditAnywhere, Category = "Generation|Micro")
     int32 MicroOctaves = 1;
 
+    UPROPERTY(EditAnywhere, Category = "Generation|Biome")
+    float PreferredHeight = 60.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation|Biome")
+    float HeightFalloff = 50.0f;
+
     UPROPERTY(EditAnywhere, Category = "Biome")
     float BiomeNoiseScale = 0.00075f;
 
@@ -160,6 +171,8 @@ public:
         P.MicroNoiseScale = MicroNoiseScale;
         P.MicroAmplitude = MicroAmplitude;
         P.MicroOctaves = MicroOctaves;
+        P.PreferredHeight = PreferredHeight;
+        P.HeightFalloff = HeightFalloff;
         P.BiomeNoiseScale = BiomeNoiseScale;
         P.BeachWidth = BeachWidth;
         P.BeachSlope = BeachSlope;

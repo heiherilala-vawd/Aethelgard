@@ -4,12 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Interaction/ItemBlock.h"
-#include "Terrain/SaveSystem.h"
+#include "AethelgardInteraction/ItemBlock.h"
+#include "AethelgardTerrain/SaveSystem.h"
 #include "InventoryComponent.generated.h"
 
 USTRUCT()
-struct FItemStack
+struct AETHELGARDINTERACTION_API FItemStack
 {
     GENERATED_BODY()
 
@@ -21,7 +21,7 @@ struct FItemStack
 };
 
 UCLASS(ClassGroup = (Interaction), meta = (BlueprintSpawnableComponent))
-class UInventoryComponent : public UActorComponent
+class AETHELGARDINTERACTION_API UInventoryComponent : public UActorComponent
 {
     GENERATED_BODY()
 

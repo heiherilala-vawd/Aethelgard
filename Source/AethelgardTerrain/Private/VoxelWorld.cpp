@@ -1,11 +1,11 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Terrain/VoxelWorld.h"
-#include "Terrain/WorldGeneratorComponent.h"
-#include "Terrain/ChunkManagerComponent.h"
-#include "Terrain/GreedyMeshGenerator.h"
-#include "Terrain/NetworkSystemComponent.h"
-#include "Terrain/SaveSystem.h"
+#include "AethelgardTerrain/VoxelWorld.h"
+#include "AethelgardTerrain/WorldGeneratorComponent.h"
+#include "AethelgardTerrain/ChunkManagerComponent.h"
+#include "AethelgardTerrain/GreedyMeshGenerator.h"
+#include "AethelgardTerrain/NetworkSystemComponent.h"
+#include "AethelgardTerrain/SaveSystem.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Materials/Material.h"

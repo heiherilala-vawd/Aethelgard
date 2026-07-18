@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Terrain/BlockRegistry.h"
+#include "AethelgardTerrain/BlockRegistry.h"
 #include "VoxelWorld.generated.h"
 
 class UChunkManagerComponent;
@@ -15,7 +15,7 @@ class UProceduralMeshComponent;
 struct FInventorySlotSaveData;
 
 UCLASS(Placeable)
-class AVoxelWorld : public AActor
+class AETHELGARDTERRAIN_API AVoxelWorld : public AActor
 {
     GENERATED_BODY()
 

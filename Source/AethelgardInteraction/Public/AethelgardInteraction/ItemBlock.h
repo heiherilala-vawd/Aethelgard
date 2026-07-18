@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Terrain/BlockRegistry.h"
+#include "AethelgardTerrain/BlockRegistry.h"
 #include "ItemBlock.generated.h"
 
 UCLASS()
-class UItemBlock : public UObject
+class AETHELGARDINTERACTION_API UItemBlock : public UObject
 {
     GENERATED_BODY()
 

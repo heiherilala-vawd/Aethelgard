@@ -4,15 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Terrain/ChunkData.h"
-#include "Terrain/WorldGeneratorComponent.h"
+#include "AethelgardTerrain/ChunkData.h"
+#include "AethelgardTerrain/WorldGeneratorComponent.h"
 #include "ChunkManagerComponent.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnChunkReady, const FIntPoint&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnChunkRemoved, const FIntPoint&);
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
-class UChunkManagerComponent : public UActorComponent
+class AETHELGARDTERRAIN_API UChunkManagerComponent : public UActorComponent
 {
     GENERATED_BODY()
 

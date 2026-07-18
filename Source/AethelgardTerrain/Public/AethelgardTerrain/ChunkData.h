@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Terrain/BlockRegistry.h"
+#include "AethelgardTerrain/BlockRegistry.h"
 #include "ChunkData.generated.h"
 
 constexpr int32 CHUNK_SIZE = 32;
@@ -12,7 +12,7 @@ constexpr int32 WORLD_HEIGHT = 256;
 constexpr int32 TOP_LAYERS = 3;
 
 USTRUCT()
-struct FChunkData
+struct AETHELGARDTERRAIN_API FChunkData
 {
     GENERATED_BODY()
 

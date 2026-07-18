@@ -1,14 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Terrain/WorldGeneratorComponent.h"
+#include "AethelgardTerrain/WorldGeneratorComponent.h"
 
 static constexpr float BiomeCenters[4] = { 0.125f, 0.375f, 0.625f, 0.875f };
 
 static const FBiomeParams BiomeParams[4] = {
-    { 44.0f, 0.0005f, 525.0f, 2,  0.025f, 15.0f, 2,  0.08f, 2.5f, 1, EBlockId::Grass,  EBlockId::Dirt,  3 },
-    { 48.0f, 0.0006f, 375.0f, 2,  0.025f, 12.0f, 2,  0.10f, 2.0f, 1, EBlockId::Sand,   EBlockId::Sand,  5 },
-    { 60.0f, 0.0004f, 825.0f, 3,  0.025f, 24.0f, 2,  0.06f, 4.0f, 1, EBlockId::Grass,  EBlockId::Stone, 2 },
-    { 50.0f, 0.0005f, 600.0f, 2,  0.025f, 18.0f, 2,  0.07f, 3.0f, 1, EBlockId::Grass,  EBlockId::Dirt,  4 },
+    { 44.0f, 0.0005f, 263.0f, 2,  0.025f, 15.0f, 2,  0.08f, 2.5f, 1,  45.0f, 30.0f, EBlockId::Grass,  EBlockId::Dirt,  3 },
+    { 48.0f, 0.0006f, 188.0f, 2,  0.025f, 12.0f, 2,  0.10f, 2.0f, 1,  40.0f, 25.0f, EBlockId::Sand,   EBlockId::Sand,  5 },
+    { 60.0f, 0.0004f, 413.0f, 3,  0.025f, 24.0f, 2,  0.06f, 4.0f, 1, 100.0f, 40.0f, EBlockId::Grass,  EBlockId::Stone, 2 },
+    { 50.0f, 0.0005f, 300.0f, 2,  0.025f, 18.0f, 2,  0.07f, 3.0f, 1,  60.0f, 80.0f, EBlockId::Grass,  EBlockId::Dirt,  4 },
 };
 
 static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed)
@@ -81,6 +81,18 @@ FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, 
         float d = FMath::Abs(BV - BiomeCenters[i]);
         float dWrap = FMath::Min(d, 1.0f - d);
         Weights[i] = FMath::Exp(-dWrap * dWrap * Sharpness);
+    }
+
+    for (int32 i = 0; i < 4; i++)
+    {
+        float Diff = Heights[i] - BiomeParams[i].PreferredHeight;
+        float FallbackInv = 1.0f / (2.0f * BiomeParams[i].HeightFalloff * BiomeParams[i].HeightFalloff);
+        Weights[i] *= FMath::Exp(-Diff * Diff * FallbackInv);
+    }
+
+    TotalWeight = 0.0f;
+    for (int32 i = 0; i < 4; i++)
+    {
         TotalWeight += Weights[i];
         if (Weights[i] > MaxW) { MaxW = Weights[i]; DominantIdx = i; }
     }
@@ -107,6 +119,7 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
 
             FColumnHeightInfo Info = ComputeHeightAt(WX, WY, P);
             float Height = Info.Height;
+            Height = FMath::Clamp(Height, 20.0f, (float)(WORLD_HEIGHT - 35));
             int32 DominantIdx = Info.DominantIdx;
 
             EBlockId SurfaceBlock = BiomeParams[DominantIdx].SurfaceBlock;

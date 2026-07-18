@@ -10,7 +10,7 @@ public class Aethelgard : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[] {
 			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
-			"ProceduralMeshComponent"
+			"ProceduralMeshComponent", "AethelgardTerrain", "AethelgardInteraction"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
@@ -21,9 +21,7 @@ public class Aethelgard : ModuleRules
 		}
 
 		PrivateIncludePaths.Add(ModuleDirectory);
-		PrivateIncludePaths.Add(ModuleDirectory + "/Terrain");
 		PrivateIncludePaths.Add(ModuleDirectory + "/Game");
-		PrivateIncludePaths.Add(ModuleDirectory + "/Interaction");
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

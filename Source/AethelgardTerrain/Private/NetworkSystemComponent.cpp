@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Terrain/NetworkSystemComponent.h"
+#include "AethelgardTerrain/NetworkSystemComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"

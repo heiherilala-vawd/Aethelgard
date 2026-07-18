@@ -9,7 +9,7 @@
 class AVoxelWorld;
 
 UCLASS()
-class UVoxelWorldSubsystem : public UWorldSubsystem
+class AETHELGARDTERRAIN_API UVoxelWorldSubsystem : public UWorldSubsystem
 {
     GENERATED_BODY()
 

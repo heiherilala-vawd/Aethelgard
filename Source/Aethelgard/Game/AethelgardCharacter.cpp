@@ -4,10 +4,10 @@
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Interaction/BuildComponent.h"
-#include "Interaction/InventoryComponent.h"
-#include "Terrain/VoxelWorld.h"
-#include "Terrain/WorldGeneratorComponent.h"
+#include "AethelgardInteraction/BuildComponent.h"
+#include "AethelgardInteraction/InventoryComponent.h"
+#include "AethelgardTerrain/VoxelWorld.h"
+#include "AethelgardTerrain/WorldGeneratorComponent.h"
 #include "Game/AethelgardGameMode.h"
 
 AAethelgardCharacter::AAethelgardCharacter()

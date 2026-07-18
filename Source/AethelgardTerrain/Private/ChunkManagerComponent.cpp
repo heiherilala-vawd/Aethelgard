@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Terrain/ChunkManagerComponent.h"
+#include "AethelgardTerrain/ChunkManagerComponent.h"
 #include "Async/Async.h"
 
 UChunkManagerComponent::UChunkManagerComponent()

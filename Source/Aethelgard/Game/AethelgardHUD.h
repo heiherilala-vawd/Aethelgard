@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
-#include "Terrain/BlockRegistry.h"
+#include "AethelgardTerrain/BlockRegistry.h"
 #include "AethelgardHUD.generated.h"
 
 class AVoxelWorld;

@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Terrain/GreedyMeshGenerator.h"
+#include "AethelgardTerrain/GreedyMeshGenerator.h"
 
 FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
     const FChunkData& CD,
@@ -48,7 +48,7 @@ FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
     }
 
     if (MinZ > MaxZ) { MinZ = 0; MaxZ = 0; }
-    MinZ = FMath::Max(MinZ - 1, 0);
+    MinZ = FMath::Max(MinZ, 1);
     MaxZ = FMath::Min(MaxZ + 1, WORLD_HEIGHT - 1);
 
     return FIntPoint(MinZ, MaxZ);

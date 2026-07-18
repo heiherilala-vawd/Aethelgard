@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Terrain/VoxelMeshGenerator.h"
+#include "AethelgardTerrain/VoxelMeshGenerator.h"
 #include "GreedyMeshGenerator.generated.h"
 
 UCLASS()
-class UGreedyMeshGenerator : public UVoxelMeshGenerator
+class AETHELGARDTERRAIN_API UGreedyMeshGenerator : public UVoxelMeshGenerator
 {
     GENERATED_BODY()
 

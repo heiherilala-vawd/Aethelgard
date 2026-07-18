@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Interaction/BuildComponent.h"
-#include "Terrain/VoxelWorld.h"
+#include "AethelgardInteraction/BuildComponent.h"
+#include "AethelgardTerrain/VoxelWorld.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "DrawDebugHelpers.h"

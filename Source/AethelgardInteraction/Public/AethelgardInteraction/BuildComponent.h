@@ -4,8 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Terrain/ChunkData.h"
-#include "Interaction/InventoryComponent.h"
+#include "AethelgardTerrain/ChunkData.h"
+#include "AethelgardInteraction/InventoryComponent.h"
 #include "BuildComponent.generated.h"
 
 class AVoxelWorld;
@@ -14,7 +14,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTargetBlockChanged, const FIntVec
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDestroyProgress, float, Progress);
 
 UCLASS(ClassGroup = (Interaction), meta = (BlueprintSpawnableComponent))
-class UBuildComponent : public UActorComponent
+class AETHELGARDINTERACTION_API UBuildComponent : public UActorComponent
 {
     GENERATED_BODY()
 

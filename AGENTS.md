@@ -16,9 +16,24 @@ Logs: `Build.log` at project root. Build is a DLL loaded by `UnrealEditor.exe`.
 
 ## Architecture
 
-Single module `Aethelgard`, two subdirectories:
-- `Terrain/` — Voxel world: chunks, greedy meshing, biome generation, networking, save system
-- `Game/` — Player, GameMode, GameState, HUD
+Three modules, strict dependency DAG:
+
+```
+AethelgardTerrain (no deps except Engine)
+       ↑
+AethelgardInteraction (depends on Terrain)
+       ↑
+Aethelgard (main module, depends on both)
+```
+
+| Module | Source dir | DLL | Purpose |
+|--------|-----------|-----|---------|
+| `AethelgardTerrain` | `Source/AethelgardTerrain/` | `AethelgardTerrain.dll` | Voxel world: chunks, greedy meshing, biome generation, networking, save system |
+| `AethelgardInteraction` | `Source/AethelgardInteraction/` | `AethelgardInteraction.dll` | Inventory, building, item blocks |
+| `Aethelgard` | `Source/Aethelgard/` | `Aethelgard.dll` | Game logic: Player, GameMode, GameState, HUD |
+
+Each module follows UE convention: `Public/<ModuleName>/` for headers, `Private/` for sources.
+Public classes carry `<MODULE>_API` macro (e.g. `AETHELGARDTERRAIN_API`).
 
 Key classes:
 - `AVoxelWorld` — Root actor, owns components, one `UProceduralMeshComponent` per chunk (`ChunkMeshes` map)
@@ -54,17 +69,20 @@ if (Target.bBuildEditor)
 
 ## Key files
 
-| File | What it defines |
-|------|----------------|
-| `BlockRegistry.h` | `EBlockId` enum, `FBlockDefinition`, `GetBlockDef()`, `GetBlockColor()` |
-| `ChunkData.h` | `FChunkData` struct |
-| `VoxelWorld.h/.cpp` | Per-chunk mesh components, material loading, tick loop |
-| `WorldGeneratorComponent.h/.cpp` | Biome params, noise, height computation, lake generation |
-| `GreedyMeshGenerator.h/.cpp` | Greedy mesh output per block type |
-| `SaveSystem.h/.cpp` | `USaveGame` subclass, block changes + inventory serialization via `UGameplayStatics` |
-| `InventoryComponent.h/.cpp` | 36-slot inventory, `AddItem`/`RemoveItem`, save/load via `FInventorySlotSaveData` |
-| `ItemBlock.h` | `UItemBlock` UObject (BlockId, DisplayName, MaxStack, TintColor) |
-| `AethelgardHUD.h/.cpp` | Debug HUD overlay |
+| File | Module | What it defines |
+|------|--------|----------------|
+| `Public/AethelgardTerrain/BlockRegistry.h` | Terrain | `EBlockId` enum, `FBlockDefinition`, `GetBlockDef()`, `GetBlockColor()` |
+| `Public/AethelgardTerrain/ChunkData.h` | Terrain | `FChunkData` struct, `CHUNK_SIZE`, `WORLD_HEIGHT` |
+| `Public/AethelgardTerrain/VoxelWorld.h/.cpp` | Terrain | Per-chunk mesh components, material loading, tick loop |
+| `Public/AethelgardTerrain/WorldGeneratorComponent.h/.cpp` | Terrain | Biome params, noise, height computation |
+| `Public/AethelgardTerrain/GreedyMeshGenerator.h/.cpp` | Terrain | Greedy mesh output per block type |
+| `Public/AethelgardTerrain/SaveSystem.h/.cpp` | Terrain | `USaveGame` subclass, block changes + inventory serialization |
+| `Public/AethelgardInteraction/InventoryComponent.h/.cpp` | Interaction | 36-slot inventory, `AddItem`/`RemoveItem`, save/load |
+| `Public/AethelgardInteraction/ItemBlock.h` | Interaction | `UItemBlock` UObject (BlockId, DisplayName, MaxStack, TintColor) |
+| `Public/AethelgardInteraction/BuildComponent.h/.cpp` | Interaction | Block placement/destruction via trace |
+| `Game/AethelgardHUD.h/.cpp` | Main | Debug HUD overlay |
+| `Game/AethelgardGameMode.h/.cpp` | Main | Console commands `SaveGame`/`LoadGame` |
+| `Game/AethelgardCharacter.h/.cpp` | Main | First-person character, owns build + inventory components |
 
 ## Pitfalls
 

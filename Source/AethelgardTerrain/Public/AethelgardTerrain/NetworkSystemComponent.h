@@ -4,11 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Terrain/BlockRegistry.h"
+#include "AethelgardTerrain/BlockRegistry.h"
 #include "NetworkSystemComponent.generated.h"
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
-class UNetworkSystemComponent : public UActorComponent
+class AETHELGARDTERRAIN_API UNetworkSystemComponent : public UActorComponent
 {
     GENERATED_BODY()
 

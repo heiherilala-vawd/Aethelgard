@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "Interaction/InventoryComponent.h"
+#include "AethelgardInteraction/InventoryComponent.h"
 
 UInventoryComponent::UInventoryComponent()
 {
