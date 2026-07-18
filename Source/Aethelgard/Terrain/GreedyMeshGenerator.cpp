@@ -97,10 +97,13 @@ void UGreedyMeshGenerator::ProcessAxis(
     int32 S2 = bA2isZ ? (MaxZ - MinZ + 3) : CHUNK_SIZE;
     int32 RealLayerCount = bAxisIsZ ? (MaxZ - MinZ + 3) : LayerCount;
 
+    TArray<uint8> Mask;
+    TArray<EBlockId> Types;
+    Mask.SetNumUninitialized(S1 * S2);
+    Types.SetNumUninitialized(S1 * S2);
+
     for (int32 L = 0; L < RealLayerCount; L++)
     {
-        TArray<uint8> Mask; Mask.SetNum(S1 * S2);
-        TArray<EBlockId> Types; Types.SetNum(S1 * S2);
         FMemory::Memzero(Mask.GetData(), S1 * S2);
 
         for (int32 U = 0; U < S1; U++)
