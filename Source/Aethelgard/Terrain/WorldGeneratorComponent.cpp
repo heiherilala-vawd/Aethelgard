@@ -35,7 +35,7 @@ float UWorldGeneratorComponent::GetBiomeValue(int32 WX, int32 WY, int32 Seed)
     return FMath::Fmod(FMath::Fmod(Noise, 1.0f) + 1.0f, 1.0f);
 }
 
-float UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P)
+FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P)
 {
     float BV = GetBiomeValue(WX, WY, P.Seed);
 
@@ -51,19 +51,23 @@ float UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, const FGener
     float Weights[4];
     float TotalWeight = 0.0f;
     constexpr float Sharpness = 30.0f;
+    int32 DominantIdx = 0;
+    float MaxW = 0.0f;
+
     for (int32 i = 0; i < 4; i++)
     {
         float d = FMath::Abs(BV - BiomeCenters[i]);
         float dWrap = FMath::Min(d, 1.0f - d);
         Weights[i] = FMath::Exp(-dWrap * dWrap * Sharpness);
         TotalWeight += Weights[i];
+        if (Weights[i] > MaxW) { MaxW = Weights[i]; DominantIdx = i; }
     }
 
     float Result = 0.0f;
     for (int32 i = 0; i < 4; i++)
         Result += (Weights[i] / TotalWeight) * Heights[i];
 
-    return Result;
+    return { Result, DominantIdx };
 }
 
 ELakeType UWorldGeneratorComponent::ClassifyZone(int32 WX, int32 WY, float Height, const FGeneratorParams& P)
@@ -94,7 +98,9 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
             int32 WX = SX + X;
             int32 WY = SY + Y;
 
-            float Height = ComputeHeightAt(WX, WY, P);
+            FColumnHeightInfo Info = ComputeHeightAt(WX, WY, P);
+            float Height = Info.Height;
+            int32 DominantIdx = Info.DominantIdx;
             ELakeType Zone = ClassifyZone(WX, WY, Height, P);
 
             float WaterLevel = 0.0f;
@@ -112,25 +118,6 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
             }
 
             float EffectiveHeight = bIsWater ? FMath::Min(Height, WaterLevel - 0.1f) : Height;
-
-            float BV = GetBiomeValue(WX, WY, P.Seed);
-            float Weights[4];
-            float TotalWeight = 0.0f;
-            constexpr float Sharpness = 30.0f;
-            for (int32 i = 0; i < 4; i++)
-            {
-                float d = FMath::Abs(BV - BiomeCenters[i]);
-                float dWrap = FMath::Min(d, 1.0f - d);
-                Weights[i] = FMath::Exp(-dWrap * dWrap * Sharpness);
-                TotalWeight += Weights[i];
-            }
-
-            int32 DominantIdx = 0;
-            float MaxW = 0.0f;
-            for (int32 i = 0; i < 4; i++)
-            {
-                if (Weights[i] > MaxW) { MaxW = Weights[i]; DominantIdx = i; }
-            }
 
             EBlockId SurfaceBlock = BiomeParams[DominantIdx].SurfaceBlock;
             EBlockId SubsurfaceBlock = BiomeParams[DominantIdx].SubsurfaceBlock;
@@ -196,5 +183,5 @@ void UWorldGeneratorComponent::GenerateChunk(FChunkData& ChunkData)
 float UWorldGeneratorComponent::GetHeight(int32 WorldX, int32 WorldY) const
 {
     FGeneratorParams P = CaptureParams();
-    return ComputeHeightAt(WorldX, WorldY, P);
+    return ComputeHeightAt(WorldX, WorldY, P).Height;
 }

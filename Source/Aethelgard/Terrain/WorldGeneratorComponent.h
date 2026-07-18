@@ -92,6 +92,12 @@ struct FGeneratorParams
     int32 BedrockLayers = 3;
 };
 
+struct FColumnHeightInfo
+{
+    float Height = 0.0f;
+    int32 DominantIdx = 0;
+};
+
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
 class UWorldGeneratorComponent : public UActorComponent
 {
@@ -171,6 +177,6 @@ public:
     static float GetBiomeValue(int32 WX, int32 WY, int32 Seed);
 
 private:
-    static float ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P);
+    static FColumnHeightInfo ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P);
     static ELakeType ClassifyZone(int32 WX, int32 WY, float Height, const FGeneratorParams& P);
 };
