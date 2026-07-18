@@ -70,21 +70,6 @@ FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, 
     return { Result, DominantIdx };
 }
 
-ELakeType UWorldGeneratorComponent::ClassifyZone(int32 WX, int32 WY, float Height, const FGeneratorParams& P)
-{
-    if (Height < P.SeaLevel)
-        return ELakeType::Sea;
-
-    float BasinNoise = GetNoise2D((float)WX, (float)WY, 0.003f, 2,
-                                   P.Seed + (int32)ENoiseLayer::NValley * 7919);
-    float BasinNorm = FMath::Fmod(FMath::Fmod(BasinNoise, 1.0f) + 1.0f, 1.0f);
-
-    if (BasinNorm > 0.7f && Height < P.LakeLevel)
-        return ELakeType::Basin;
-
-    return ELakeType::None;
-}
-
 void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FGeneratorParams& P)
 {
     const FIntPoint& CP = ChunkData.Position;
@@ -101,23 +86,6 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
             FColumnHeightInfo Info = ComputeHeightAt(WX, WY, P);
             float Height = Info.Height;
             int32 DominantIdx = Info.DominantIdx;
-            ELakeType Zone = ClassifyZone(WX, WY, Height, P);
-
-            float WaterLevel = 0.0f;
-            bool bIsWater = false;
-
-            if (Zone == ELakeType::Sea)
-            {
-                WaterLevel = P.SeaLevel;
-                bIsWater = true;
-            }
-            else if (Zone == ELakeType::Basin)
-            {
-                WaterLevel = P.LakeLevel;
-                bIsWater = true;
-            }
-
-            float EffectiveHeight = bIsWater ? FMath::Min(Height, WaterLevel - 0.1f) : Height;
 
             EBlockId SurfaceBlock = BiomeParams[DominantIdx].SurfaceBlock;
             EBlockId SubsurfaceBlock = BiomeParams[DominantIdx].SubsurfaceBlock;
@@ -130,13 +98,6 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
                 SubsurfaceDepth = 1;
             }
 
-            if (bIsWater && Zone == ELakeType::Basin)
-            {
-                SurfaceBlock = EBlockId::Sand;
-                SubsurfaceBlock = EBlockId::Clay;
-                SubsurfaceDepth = (int32)P.ClayDepth;
-            }
-
             float N1 = GetNoise2D((float)WX, (float)WY, 0.01f, 1,
                                    P.Seed + (int32)ENoiseLayer::NLayer1 * 7919);
             int32 Perturb1 = (N1 > 0.3f) ? 1 : (N1 < -0.3f) ? -1 : 0;
@@ -145,14 +106,14 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
                                    P.Seed + (int32)ENoiseLayer::NLayer2 * 7919);
             int32 Perturb2 = (N2 > 0.3f) ? 1 : (N2 < -0.3f) ? -1 : 0;
 
-            int32 StoneBoundary = (int32)(EffectiveHeight - SubsurfaceDepth) + Perturb1;
-            int32 SubBoundary = (int32)(EffectiveHeight - 1) + Perturb2;
+            int32 StoneBoundary = (int32)(Height - SubsurfaceDepth) + Perturb1;
+            int32 SubBoundary = (int32)(Height - 1) + Perturb2;
 
             StoneBoundary = FMath::Clamp(StoneBoundary, 0, WORLD_HEIGHT - 1);
             SubBoundary = FMath::Clamp(SubBoundary, StoneBoundary + 1, WORLD_HEIGHT);
 
             uint8 Top[TOP_LAYERS];
-            uint8 EH = (uint8)EffectiveHeight;
+            uint8 EH = (uint8)Height;
 
             for (int32 Layer = 0; Layer < TOP_LAYERS; Layer++)
             {
@@ -167,8 +128,7 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
                     Top[Layer] = (uint8)SurfaceBlock;
             }
 
-            uint8 WZ = bIsWater ? (uint8)WaterLevel : 0;
-            ChunkData.SetColumn(X, Y, EH, WZ, Top);
+            ChunkData.SetColumn(X, Y, EH, Top);
         }
     }
 

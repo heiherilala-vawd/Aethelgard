@@ -117,7 +117,7 @@ void UBuildComponent::TickDestroy(float DeltaTime)
     if (CurrentDestroyProgress >= 1.0f)
     {
         EBlockId Block = TargetWorld->GetBlock(CurrentTargetBlock.X, CurrentTargetBlock.Y, CurrentTargetBlock.Z);
-        if (Block != EBlockId::Air && Block != EBlockId::Water && Inventory)
+        if (Block != EBlockId::Air && Inventory)
         {
             UItemBlock* Item = UItemBlock::Create(Block, this);
             if (Item)
@@ -155,7 +155,7 @@ void UBuildComponent::PlaceBlock()
         return;
 
     EBlockId ExistingBlock = TargetWorld->GetBlock(PlacePos.X, PlacePos.Y, PlacePos.Z);
-    if (ExistingBlock != EBlockId::Air && ExistingBlock != EBlockId::Water)
+    if (ExistingBlock != EBlockId::Air)
         return;
 
     TargetWorld->SetBlock(PlacePos.X, PlacePos.Y, PlacePos.Z, SelectedBlock);

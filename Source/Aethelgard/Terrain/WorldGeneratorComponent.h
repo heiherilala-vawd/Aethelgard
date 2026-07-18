@@ -34,20 +34,10 @@ enum class ENoiseLayer : int32
     NSand,
     NSandFalloff,
     NClaySediment,
-    NValley,
-    NSpillway,
     NLayer1,
     NLayer2,
     NTree,
     NMAX UMETA(Hidden)
-};
-
-enum class ELakeType : uint8
-{
-    None = 0,
-    River,
-    Basin,
-    Sea
 };
 
 USTRUCT()
@@ -77,14 +67,6 @@ struct FGeneratorParams
     int32 Octaves = 3;
 
     float BiomeNoiseScale = 0.0000375f;
-
-    float SeaLevel = 30.0f;
-    float LakeLevel = 48.0f;
-    float LakeletLevel = 45.0f;
-
-    float BasinMarginSize = 5.0f;
-    float LakeFlatMargin = 3.0f;
-    float ClayDepth = 3.0f;
 
     float BeachWidth = 3.0f;
     float BeachSlope = 2.0f;
@@ -119,26 +101,8 @@ public:
     UPROPERTY(EditAnywhere, Category = "Generation")
     int32 Octaves = 3;
 
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    float SeaLevel = 30.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    float LakeLevel = 48.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    float LakeletLevel = 45.0f;
-
     UPROPERTY(EditAnywhere, Category = "Biome")
     float BiomeNoiseScale = 0.0000375f;
-
-    UPROPERTY(EditAnywhere, Category = "Lake")
-    float BasinMarginSize = 5.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Lake")
-    float LakeFlatMargin = 3.0f;
-
-    UPROPERTY(EditAnywhere, Category = "Lake")
-    float ClayDepth = 3.0f;
 
     UPROPERTY(EditAnywhere, Category = "Beach")
     float BeachWidth = 3.0f;
@@ -161,12 +125,6 @@ public:
         P.NoiseScale = NoiseScale;
         P.Octaves = Octaves;
         P.BiomeNoiseScale = BiomeNoiseScale;
-        P.SeaLevel = SeaLevel;
-        P.LakeLevel = LakeLevel;
-        P.LakeletLevel = LakeletLevel;
-        P.BasinMarginSize = BasinMarginSize;
-        P.LakeFlatMargin = LakeFlatMargin;
-        P.ClayDepth = ClayDepth;
         P.BeachWidth = BeachWidth;
         P.BeachSlope = BeachSlope;
         P.BedrockLayers = BedrockLayers;
@@ -178,5 +136,4 @@ public:
 
 private:
     static FColumnHeightInfo ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P);
-    static ELakeType ClassifyZone(int32 WX, int32 WY, float Height, const FGeneratorParams& P);
 };

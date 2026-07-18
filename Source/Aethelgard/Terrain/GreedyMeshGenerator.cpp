@@ -42,10 +42,8 @@ FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
 
             int32 ColIdx = FChunkData::GetColumnIndex(LX, LY);
             int32 H = Chunk->HeightData[ColIdx];
-            int32 W = Chunk->WaterData[ColIdx];
 
             if (H > 0) { MinZ = FMath::Min(MinZ, H); MaxZ = FMath::Max(MaxZ, H); }
-            if (W > 0) { MinZ = FMath::Min(MinZ, W); MaxZ = FMath::Max(MaxZ, W); }
         }
     }
 
@@ -120,16 +118,8 @@ void UGreedyMeshGenerator::ProcessAxis(
                 int32 PN[3] = {P[0], P[1], P[2]}; PN[Axis] += Sign;
                 EBlockId Neighbor = GetBlock(CD, NB, PN[0], PN[1], PN[2]);
 
-                if (B == EBlockId::Water)
-                {
-                    if (Neighbor == EBlockId::Air)
-                        { Mask[V * S1 + U] = 1; Types[V * S1 + U] = B; }
-                }
-                else
-                {
-                    if (Neighbor == EBlockId::Air || Neighbor == EBlockId::Water)
-                        { Mask[V * S1 + U] = 1; Types[V * S1 + U] = B; }
-                }
+                if (Neighbor == EBlockId::Air)
+                    { Mask[V * S1 + U] = 1; Types[V * S1 + U] = B; }
             }
 
         for (int32 V = 0; V < S2; V++)

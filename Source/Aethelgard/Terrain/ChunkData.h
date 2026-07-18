@@ -22,9 +22,6 @@ struct FChunkData
     TArray<uint8> HeightData;
 
     UPROPERTY()
-    TArray<uint8> WaterData;
-
-    UPROPERTY()
     TArray<uint8> TopBlocks;
 
     UPROPERTY()
@@ -36,7 +33,6 @@ struct FChunkData
     {
         Position = InPosition;
         HeightData.Init(0, CHUNK_AREA);
-        WaterData.Init(0, CHUNK_AREA);
         TopBlocks.Init(static_cast<uint8>(EBlockId::Stone), CHUNK_AREA * TOP_LAYERS);
         Overrides.Empty();
         bIsGenerated = false;
@@ -59,13 +55,9 @@ struct FChunkData
             return static_cast<EBlockId>(*Ov);
 
         uint8 H = HeightData[ColIdx];
-        uint8 W = WaterData[ColIdx];
 
         if (Z >= H)
-        {
-            if (W > 0 && Z < W) return EBlockId::Water;
             return EBlockId::Air;
-        }
 
         int32 LayerIdx = H - 1 - Z;
         if (LayerIdx < TOP_LAYERS)
@@ -88,11 +80,10 @@ struct FChunkData
             Overrides.Add(OvKey, static_cast<uint8>(Block));
     }
 
-    void SetColumn(int32 X, int32 Y, uint8 Height, uint8 Water, const uint8 Top[TOP_LAYERS])
+    void SetColumn(int32 X, int32 Y, uint8 Height, const uint8 Top[TOP_LAYERS])
     {
         int32 ColIdx = GetColumnIndex(X, Y);
         HeightData[ColIdx] = Height;
-        WaterData[ColIdx] = Water;
         for (int32 i = 0; i < TOP_LAYERS; i++)
             TopBlocks[ColIdx * TOP_LAYERS + i] = Top[i];
     }
