@@ -26,7 +26,7 @@ public:
     int32 Seed = 0;
 
     UPROPERTY(EditAnywhere, Category = "World")
-    int32 ViewDistance = 4;
+    int32 ViewDistance = 16;
 
     UPROPERTY(EditAnywhere, Category = "World")
     float BlockScale = 100.0f;
