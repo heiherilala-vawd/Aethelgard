@@ -66,7 +66,7 @@ struct FGeneratorParams
     float NoiseScale = 0.005f;
     int32 Octaves = 3;
 
-    float BiomeNoiseScale = 0.0000375f;
+    float BiomeNoiseScale = 0.00075f;
 
     float BeachWidth = 3.0f;
     float BeachSlope = 2.0f;
@@ -102,7 +102,7 @@ public:
     int32 Octaves = 3;
 
     UPROPERTY(EditAnywhere, Category = "Biome")
-    float BiomeNoiseScale = 0.0000375f;
+    float BiomeNoiseScale = 0.00075f;
 
     UPROPERTY(EditAnywhere, Category = "Beach")
     float BeachWidth = 3.0f;

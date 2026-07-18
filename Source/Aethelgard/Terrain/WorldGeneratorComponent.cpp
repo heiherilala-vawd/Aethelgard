@@ -30,9 +30,9 @@ static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed
 
 float UWorldGeneratorComponent::GetBiomeValue(int32 WX, int32 WY, int32 Seed)
 {
-    float Noise = GetNoise2D((float)WX, (float)WY, 0.0000375f, 2,
+    float Noise = GetNoise2D((float)WX, (float)WY, 0.00075f, 2,
                              Seed + (int32)ENoiseLayer::NBlend * 7919);
-    return FMath::Fmod(FMath::Fmod(Noise, 1.0f) + 1.0f, 1.0f);
+    return (Noise + 1.0f) * 0.5f;
 }
 
 FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P)
@@ -50,7 +50,7 @@ FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, 
 
     float Weights[4];
     float TotalWeight = 0.0f;
-    constexpr float Sharpness = 30.0f;
+    constexpr float Sharpness = 5.0f;
     int32 DominantIdx = 0;
     float MaxW = 0.0f;
 
