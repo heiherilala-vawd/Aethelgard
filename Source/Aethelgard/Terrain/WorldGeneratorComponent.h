@@ -37,6 +37,9 @@ enum class ENoiseLayer : int32
     NLayer1,
     NLayer2,
     NTree,
+    NMacro,
+    NMeso,
+    NMicro,
     NMAX UMETA(Hidden)
 };
 
@@ -46,9 +49,15 @@ struct FBiomeParams
     GENERATED_BODY()
 
     float BaseHeight = 50.0f;
-    float HeightScale = 25.0f;
-    float NoiseScale = 0.005f;
-    int32 Octaves = 3;
+    float MacroNoiseScale = 0.0005f;
+    float MacroAmplitude = 600.0f;
+    int32 MacroOctaves = 2;
+    float MesoNoiseScale = 0.025f;
+    float MesoAmplitude = 15.0f;
+    int32 MesoOctaves = 2;
+    float MicroNoiseScale = 0.08f;
+    float MicroAmplitude = 3.0f;
+    int32 MicroOctaves = 1;
     EBlockId SurfaceBlock = EBlockId::Grass;
     EBlockId SubsurfaceBlock = EBlockId::Dirt;
     int32 SubsurfaceDepth = 3;
@@ -61,10 +70,17 @@ struct FGeneratorParams
 
     int32 Seed = 0;
 
-    float BaseHeight = 50.0f;
-    float HeightScale = 25.0f;
-    float NoiseScale = 0.005f;
-    int32 Octaves = 3;
+    float MacroNoiseScale = 0.0005f;
+    float MacroAmplitude = 600.0f;
+    int32 MacroOctaves = 2;
+
+    float MesoNoiseScale = 0.025f;
+    float MesoAmplitude = 15.0f;
+    int32 MesoOctaves = 2;
+
+    float MicroNoiseScale = 0.08f;
+    float MicroAmplitude = 3.0f;
+    int32 MicroOctaves = 1;
 
     float BiomeNoiseScale = 0.00075f;
 
@@ -89,17 +105,32 @@ public:
     UPROPERTY(EditAnywhere, Category = "World")
     int32 Seed = 0;
 
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    float BaseHeight = 50.0f;
+    UPROPERTY(EditAnywhere, Category = "Generation|Macro")
+    float MacroNoiseScale = 0.0005f;
 
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    float HeightScale = 25.0f;
+    UPROPERTY(EditAnywhere, Category = "Generation|Macro")
+    float MacroAmplitude = 600.0f;
 
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    float NoiseScale = 0.005f;
+    UPROPERTY(EditAnywhere, Category = "Generation|Macro")
+    int32 MacroOctaves = 2;
 
-    UPROPERTY(EditAnywhere, Category = "Generation")
-    int32 Octaves = 3;
+    UPROPERTY(EditAnywhere, Category = "Generation|Meso")
+    float MesoNoiseScale = 0.025f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation|Meso")
+    float MesoAmplitude = 15.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation|Meso")
+    int32 MesoOctaves = 2;
+
+    UPROPERTY(EditAnywhere, Category = "Generation|Micro")
+    float MicroNoiseScale = 0.08f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation|Micro")
+    float MicroAmplitude = 3.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Generation|Micro")
+    int32 MicroOctaves = 1;
 
     UPROPERTY(EditAnywhere, Category = "Biome")
     float BiomeNoiseScale = 0.00075f;
@@ -120,10 +151,15 @@ public:
     {
         FGeneratorParams P;
         P.Seed = Seed;
-        P.BaseHeight = BaseHeight;
-        P.HeightScale = HeightScale;
-        P.NoiseScale = NoiseScale;
-        P.Octaves = Octaves;
+        P.MacroNoiseScale = MacroNoiseScale;
+        P.MacroAmplitude = MacroAmplitude;
+        P.MacroOctaves = MacroOctaves;
+        P.MesoNoiseScale = MesoNoiseScale;
+        P.MesoAmplitude = MesoAmplitude;
+        P.MesoOctaves = MesoOctaves;
+        P.MicroNoiseScale = MicroNoiseScale;
+        P.MicroAmplitude = MicroAmplitude;
+        P.MicroOctaves = MicroOctaves;
         P.BiomeNoiseScale = BiomeNoiseScale;
         P.BeachWidth = BeachWidth;
         P.BeachSlope = BeachSlope;

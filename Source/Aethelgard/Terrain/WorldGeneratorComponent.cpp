@@ -5,10 +5,10 @@
 static constexpr float BiomeCenters[4] = { 0.125f, 0.375f, 0.625f, 0.875f };
 
 static const FBiomeParams BiomeParams[4] = {
-    { 44.0f, 10.0f, 0.010f, 3, EBlockId::Grass,  EBlockId::Dirt,  3 },
-    { 48.0f, 12.0f, 0.007f, 2, EBlockId::Sand,   EBlockId::Sand,  5 },
-    { 60.0f, 35.0f, 0.005f, 4, EBlockId::Grass,  EBlockId::Stone, 2 },
-    { 50.0f, 18.0f, 0.006f, 3, EBlockId::Grass,  EBlockId::Dirt,  4 },
+    { 44.0f, 0.0005f, 525.0f, 2,  0.025f, 15.0f, 2,  0.08f, 2.5f, 1, EBlockId::Grass,  EBlockId::Dirt,  3 },
+    { 48.0f, 0.0006f, 375.0f, 2,  0.025f, 12.0f, 2,  0.10f, 2.0f, 1, EBlockId::Sand,   EBlockId::Sand,  5 },
+    { 60.0f, 0.0004f, 825.0f, 3,  0.025f, 24.0f, 2,  0.06f, 4.0f, 1, EBlockId::Grass,  EBlockId::Stone, 2 },
+    { 50.0f, 0.0005f, 600.0f, 2,  0.025f, 18.0f, 2,  0.07f, 3.0f, 1, EBlockId::Grass,  EBlockId::Dirt,  4 },
 };
 
 static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed)
@@ -55,10 +55,19 @@ FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, 
     float Heights[4];
     for (int32 i = 0; i < 4; i++)
     {
-        Heights[i] = GetNoise2D((float)WX, (float)WY, BiomeParams[i].NoiseScale,
-                                 BiomeParams[i].Octaves,
-                                 P.Seed + ((int32)ENoiseLayer::NBiome1 + i) * 7919);
-        Heights[i] = BiomeParams[i].BaseHeight + Heights[i] * BiomeParams[i].HeightScale;
+        float Macro = GetNoise2D((float)WX, (float)WY, BiomeParams[i].MacroNoiseScale,
+                                 BiomeParams[i].MacroOctaves,
+                                 P.Seed + ((int32)ENoiseLayer::NMacro + i) * 7919);
+        float Meso = GetNoise2D((float)WX, (float)WY, BiomeParams[i].MesoNoiseScale,
+                                BiomeParams[i].MesoOctaves,
+                                P.Seed + ((int32)ENoiseLayer::NMeso + i) * 7919);
+        float Micro = GetNoise2D((float)WX, (float)WY, BiomeParams[i].MicroNoiseScale,
+                                 BiomeParams[i].MicroOctaves,
+                                 P.Seed + ((int32)ENoiseLayer::NMicro + i) * 7919);
+        Heights[i] = BiomeParams[i].BaseHeight
+                    + Macro * BiomeParams[i].MacroAmplitude
+                    + Meso * BiomeParams[i].MesoAmplitude
+                    + Micro * BiomeParams[i].MicroAmplitude;
     }
 
     float Weights[4];
