@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "AethelgardTerrain/GreedyMeshGenerator.h"
+#include "AethelgardTerrain/BlockRegistry.h"
 
 FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
     const FChunkData& CD,
@@ -44,6 +45,9 @@ FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
             int32 H = Chunk->HeightData[ColIdx];
 
             if (H > 0) { MinZ = FMath::Min(MinZ, H); MaxZ = FMath::Max(MaxZ, H); }
+
+            uint8 WL = Chunk->WaterLevel[ColIdx];
+            if (WL > 0) MaxZ = FMath::Max(MaxZ, (int32)WL);
         }
     }
 
@@ -121,6 +125,8 @@ void UGreedyMeshGenerator::ProcessAxis(
                 EBlockId Neighbor = GetBlock(CD, NB, PN[0], PN[1], PN[2]);
 
                 if (Neighbor == EBlockId::Air)
+                    { Mask[V * S1 + U] = 1; Types[V * S1 + U] = B; }
+                else if (Neighbor < EBlockId::MAX && GetBlockDef(Neighbor).bIsTransparent && !GetBlockDef(B).bIsTransparent)
                     { Mask[V * S1 + U] = 1; Types[V * S1 + U] = B; }
             }
 

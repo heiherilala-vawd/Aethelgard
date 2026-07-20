@@ -31,25 +31,16 @@ void AAethelgardHUD::DrawLine(float X, float& Y, const FString& Text, const FCol
     Y += 18.0f * Scale;
 }
 
-FString AAethelgardHUD::GetBiomeName(float BiomeValue)
+FString AAethelgardHUD::GetBiomeName(EBiomeType Biome)
 {
-    static constexpr float Centers[4] = { 0.125f, 0.375f, 0.625f, 0.875f };
-    static const TCHAR* Names[4] = { TEXT("Plaines"), TEXT("Desert"), TEXT("Montagne"), TEXT("Foret") };
-
-    int32 Best = 0;
-    float BestDist = MAX_FLT;
-    for (int32 i = 0; i < 4; i++)
+    switch (Biome)
     {
-        float d = FMath::Abs(BiomeValue - Centers[i]);
-        float dWrap = FMath::Abs(d - 1.0f);
-        float dMin = FMath::Min(d, dWrap);
-        if (dMin < BestDist)
-        {
-            BestDist = dMin;
-            Best = i;
-        }
+    case EBiomeType::Plains:   return TEXT("Plaines");
+    case EBiomeType::Desert:   return TEXT("Desert");
+    case EBiomeType::Mountain: return TEXT("Montagne");
+    case EBiomeType::Forest:   return TEXT("Foret");
+    default:                   return TEXT("Mer");
     }
-    return FString(Names[Best]);
 }
 
 FString AAethelgardHUD::GetBlockName(EBlockId BlockId)
@@ -105,8 +96,8 @@ void AAethelgardHUD::DrawDebugInfo()
         UWorldGeneratorComponent* Gen = VW->GetWorldGenerator();
         if (Gen)
         {
-            float BiomeVal = UWorldGeneratorComponent::GetBiomeValue(BX, BY, Gen->Seed);
-            CachedBiome = FString::Printf(TEXT("Biome :     %s"), *GetBiomeName(BiomeVal));
+            EBiomeType Biome = UWorldGeneratorComponent::GetBiomeAt(BX, BY, Gen->CaptureParams());
+            CachedBiome = FString::Printf(TEXT("Biome :     %s"), *GetBiomeName(Biome));
 
             EBlockId UnderFeet = VW->GetChunkManager()->GetBlock(BX, BY, BZ);
             CachedBlock = FString::Printf(TEXT("Bloc :      %s"), *GetBlockName(UnderFeet));

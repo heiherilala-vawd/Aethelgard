@@ -1,17 +1,17 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "AethelgardTerrain/WorldGeneratorComponent.h"
-
-static constexpr float BiomeCenters[4] = { 0.125f, 0.375f, 0.625f, 0.875f };
+#include "AethelgardTerrain/GenerationDefaults.h"
 
 static const FBiomeParams BiomeParams[4] = {
-    { 44.0f, 0.0005f, 263.0f, 2,  0.025f, 15.0f, 2,  0.08f, 2.5f, 1,  45.0f, 30.0f, EBlockId::Grass,  EBlockId::Dirt,  3 },
-    { 48.0f, 0.0006f, 188.0f, 2,  0.025f, 12.0f, 2,  0.10f, 2.0f, 1,  40.0f, 25.0f, EBlockId::Sand,   EBlockId::Sand,  5 },
-    { 60.0f, 0.0004f, 413.0f, 3,  0.025f, 24.0f, 2,  0.06f, 4.0f, 1, 100.0f, 40.0f, EBlockId::Grass,  EBlockId::Stone, 2 },
-    { 50.0f, 0.0005f, 300.0f, 2,  0.025f, 18.0f, 2,  0.07f, 3.0f, 1,  60.0f, 80.0f, EBlockId::Grass,  EBlockId::Dirt,  4 },
+    { EBlockId::Grass, EBlockId::Dirt, 3, true,  8.0f, GenDef::PlainsMinHeight,  GenDef::PlainsMaxHeight },
+    { EBlockId::Sand,  EBlockId::Sand, 5, true,  5.0f, GenDef::DesertMinHeight,  GenDef::DesertMaxHeight },
+    { EBlockId::Grass, EBlockId::Stone, 2, false, 0.0f, GenDef::MountainStart,   GenDef::MaxHeight },
+    { EBlockId::Grass, EBlockId::Dirt, 4, false, 0.0f, GenDef::ForestMinHeight,  GenDef::ForestMaxHeight },
 };
 
-static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed)
+static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed,
+    float Persistence = 0.5f, float Lacunarity = 2.0f)
 {
     static TMap<int32, FVector2D> OffsetCache;
 
@@ -35,73 +35,114 @@ static float GetNoise2D(float X, float Y, float Scale, int32 Octaves, int32 Seed
             X * Scale * Freq + Oxy.X,
             Y * Scale * Freq + Oxy.Y));
         MaxAmp += Amplitude;
-        Amplitude *= 0.5f;
-        Freq *= 2.0f;
+        Amplitude *= Persistence;
+        Freq *= Lacunarity;
     }
     return Value / MaxAmp;
 }
 
-float UWorldGeneratorComponent::GetBiomeValue(int32 WX, int32 WY, int32 Seed)
+float UWorldGeneratorComponent::ComputeBaseHeight(int32 WX, int32 WY, const FGeneratorParams& P)
 {
-    float Noise = GetNoise2D((float)WX, (float)WY, 0.00075f, 2,
-                             Seed + (int32)ENoiseLayer::NBlend * 7919);
-    return (Noise + 1.0f) * 0.5f;
+    float Macro = GetNoise2D((float)WX, (float)WY, P.MacroScale, P.MacroOctaves,
+        P.Seed + (int32)ENoiseLayer::NMacro * 7919,
+        P.MacroPersistence, P.MacroLacunarity);
+    float BaseShape = FMath::Abs(GetNoise2D((float)WX, (float)WY, P.BaseShapeScale, 1,
+        P.Seed + (int32)ENoiseLayer::NBaseShape * 7919,
+        P.BaseShapePersistence, P.BaseShapeLacunarity));
+    float Meso = GetNoise2D((float)WX, (float)WY, P.MesoScale, P.MesoOctaves,
+        P.Seed + (int32)ENoiseLayer::NMeso * 7919,
+        P.MesoPersistence, P.MesoLacunarity);
+    float Micro = GetNoise2D((float)WX, (float)WY, P.MicroScale, P.MicroOctaves,
+        P.Seed + (int32)ENoiseLayer::NMicro * 7919,
+        P.MicroPersistence, P.MicroLacunarity);
+
+    return  P.GlobalElevation
+          + Macro * P.MacroAmplitude
+          + BaseShape * P.BaseShapeAmplitude
+          + Meso  * P.MesoAmplitude
+          + Micro * P.MicroAmplitude;
 }
 
-FColumnHeightInfo UWorldGeneratorComponent::ComputeHeightAt(int32 WX, int32 WY, const FGeneratorParams& P)
+int32 UWorldGeneratorComponent::VoronoiSelect(int32 WX, int32 WY, float Scale, int32 Seed)
 {
-    float BV = GetBiomeValue(WX, WY, P.Seed);
+    int32 CX = FMath::FloorToInt((float)WX * Scale);
+    int32 CY = FMath::FloorToInt((float)WY * Scale);
+    FRandomStream RNG(CX * 73856093 + CY * 19349663 + Seed * 83492791);
+    static const EBiomeType MedianMap[3] = { EBiomeType::Plains, EBiomeType::Desert, EBiomeType::Forest };
+    return (int32)MedianMap[RNG.RandRange(0, 2)];
+}
 
-    float Heights[4];
-    for (int32 i = 0; i < 4; i++)
+FColumnResult UWorldGeneratorComponent::ComputeColumnAt(int32 WX, int32 WY, const FGeneratorParams& P)
+{
+    FColumnResult Result;
+
+    float Height = ComputeBaseHeight(WX, WY, P);
+    Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
+
+    if (Height < P.SeaLevel)
     {
-        float Macro = GetNoise2D((float)WX, (float)WY, BiomeParams[i].MacroNoiseScale,
-                                 BiomeParams[i].MacroOctaves,
-                                 P.Seed + ((int32)ENoiseLayer::NMacro + i) * 7919);
-        float Meso = GetNoise2D((float)WX, (float)WY, BiomeParams[i].MesoNoiseScale,
-                                BiomeParams[i].MesoOctaves,
-                                P.Seed + ((int32)ENoiseLayer::NMeso + i) * 7919);
-        float Micro = GetNoise2D((float)WX, (float)WY, BiomeParams[i].MicroNoiseScale,
-                                 BiomeParams[i].MicroOctaves,
-                                 P.Seed + ((int32)ENoiseLayer::NMicro + i) * 7919);
-        Heights[i] = BiomeParams[i].BaseHeight
-                    + Macro * BiomeParams[i].MacroAmplitude
-                    + Meso * BiomeParams[i].MesoAmplitude
-                    + Micro * BiomeParams[i].MicroAmplitude;
+        float RawDepth = P.SeaLevel - Height;
+        float EffectiveDepth;
+        if (RawDepth <= P.SeaMaxDepth)
+            EffectiveDepth = RawDepth;
+        else
+            EffectiveDepth = P.SeaMaxDepth + (RawDepth - P.SeaMaxDepth) * P.SeaDepthSlope;
+        Height = P.SeaLevel - EffectiveDepth;
+        Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
+        Result.WaterSurface = (uint8)FMath::Clamp(P.SeaLevel, 0.0f, 255.0f);
+        Result.Biome = EBiomeType::Plains;
+        Result.Height = Height;
+        return Result;
     }
 
-    float Weights[4];
-    float TotalWeight = 0.0f;
-    constexpr float Sharpness = 5.0f;
-    int32 DominantIdx = 0;
-    float MaxW = 0.0f;
-
-    for (int32 i = 0; i < 4; i++)
+    if (Height < P.MountainStart)
     {
-        float d = FMath::Abs(BV - BiomeCenters[i]);
-        float dWrap = FMath::Min(d, 1.0f - d);
-        Weights[i] = FMath::Exp(-dWrap * dWrap * Sharpness);
+        int32 BiomeIdx = VoronoiSelect(WX, WY, P.VoronoiScale,
+            P.Seed + (int32)ENoiseLayer::NVoronoi * 7919);
+        Result.Biome = static_cast<EBiomeType>(BiomeIdx);
+
+        float HeightPreHill = Height;
+
+        if (BiomeIdx == 0 || BiomeIdx == 1)
+        {
+            float HillNoise = FMath::Abs(GetNoise2D((float)WX, (float)WY, P.HillScale, 1,
+                P.Seed + (int32)ENoiseLayer::NHills * 7919));
+            Height += HillNoise * P.HillAmplitude;
+        }
+
+        float LakeNoise = GetNoise2D((float)WX, (float)WY, 0.01f, 1,
+            P.Seed + (int32)ENoiseLayer::NLake * 7919);
+
+        if (LakeNoise < -0.25f && HeightPreHill < P.LakeThreshold && BiomeIdx != 1)
+        {
+            float LakeSurface = HeightPreHill;
+            float LakeFloor = Height - (float)P.LakeDepth - P.LakeDepthSlope * 4.0f;
+            Height = FMath::Clamp(LakeFloor, 1.0f, P.MaxHeight);
+            Result.WaterSurface = (uint8)FMath::Clamp(LakeSurface, 0.0f, 255.0f);
+        }
+
+        float MinH = BiomeParams[BiomeIdx].MinHeight;
+        float MaxH = BiomeParams[BiomeIdx].MaxHeight;
+        if (Height < MinH)
+            Height = FMath::Lerp(Height, MinH, 0.5f);
+        else if (Height > MaxH)
+            Height = FMath::Lerp(Height, MaxH, 0.5f);
+        Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
+
+        Result.Height = Height;
+        return Result;
     }
 
-    for (int32 i = 0; i < 4; i++)
-    {
-        float Diff = Heights[i] - BiomeParams[i].PreferredHeight;
-        float FallbackInv = 1.0f / (2.0f * BiomeParams[i].HeightFalloff * BiomeParams[i].HeightFalloff);
-        Weights[i] *= FMath::Exp(-Diff * Diff * FallbackInv);
-    }
-
-    TotalWeight = 0.0f;
-    for (int32 i = 0; i < 4; i++)
-    {
-        TotalWeight += Weights[i];
-        if (Weights[i] > MaxW) { MaxW = Weights[i]; DominantIdx = i; }
-    }
-
-    float Result = 0.0f;
-    for (int32 i = 0; i < 4; i++)
-        Result += (Weights[i] / TotalWeight) * Heights[i];
-
-    return { Result, DominantIdx };
+    Result.Biome = EBiomeType::Mountain;
+    float MountainFactor = (Height - P.MountainStart) / (P.MaxHeight - P.MountainStart);
+    MountainFactor = FMath::Clamp(MountainFactor, 0.0f, 1.0f);
+    float ShapeNoise = GetNoise2D((float)WX, (float)WY, P.MountainShapeScale, 2,
+        P.Seed + (int32)ENoiseLayer::NMountainShape * 7919,
+        P.MountainShapePersistence, P.MountainShapeLacunarity);
+    Height += ShapeNoise * P.MountainShapeAmplitude * MountainFactor * MountainFactor;
+    Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
+    Result.Height = Height;
+    return Result;
 }
 
 void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FGeneratorParams& P)
@@ -110,45 +151,63 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
     const int32 SX = CP.X * CHUNK_SIZE;
     const int32 SY = CP.Y * CHUNK_SIZE;
 
+    FColumnResult Results[CHUNK_SIZE][CHUNK_SIZE];
+
     for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
-    {
+        for (int32 X = 0; X < CHUNK_SIZE; X++)
+            Results[X][Y] = ComputeColumnAt(SX + X, SY + Y, P);
+
+    bool bIsShore[CHUNK_SIZE][CHUNK_SIZE];
+    FMemory::Memzero(bIsShore, sizeof(bIsShore));
+
+    for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
         for (int32 X = 0; X < CHUNK_SIZE; X++)
         {
-            int32 WX = SX + X;
-            int32 WY = SY + Y;
+            if (Results[X][Y].WaterSurface > 0) continue;
+            uint8 MyH = (uint8)Results[X][Y].Height;
+            const int32 DX[] = { -1, 1, 0, 0 };
+            const int32 DY[] = { 0, 0, -1, 1 };
+            for (int32 d = 0; d < 4; d++)
+            {
+                int32 NX = X + DX[d], NY = Y + DY[d];
+                if (NX < 0 || NX >= CHUNK_SIZE || NY < 0 || NY >= CHUNK_SIZE) continue;
+                if (Results[NX][NY].WaterSurface > 0 && MyH >= (uint8)Results[NX][NY].Height)
+                { bIsShore[X][Y] = true; break; }
+            }
+        }
 
-            FColumnHeightInfo Info = ComputeHeightAt(WX, WY, P);
-            float Height = Info.Height;
-            Height = FMath::Clamp(Height, 20.0f, (float)(WORLD_HEIGHT - 35));
-            int32 DominantIdx = Info.DominantIdx;
+    for (int32 Y = 0; Y < CHUNK_SIZE; Y++)
+        for (int32 X = 0; X < CHUNK_SIZE; X++)
+        {
+            const FColumnResult& R = Results[X][Y];
+            float Height = R.Height;
 
-            EBlockId SurfaceBlock = BiomeParams[DominantIdx].SurfaceBlock;
-            EBlockId SubsurfaceBlock = BiomeParams[DominantIdx].SubsurfaceBlock;
-            int32 SubsurfaceDepth = BiomeParams[DominantIdx].SubsurfaceDepth;
+            const FBiomeParams& BP = BiomeParams[(int32)R.Biome];
+            EBlockId SurfaceBlock = BP.SurfaceBlock;
+            EBlockId SubsurfaceBlock = BP.SubsurfaceBlock;
+            int32 SubsurfaceDepth = BP.SubsurfaceDepth;
 
-            if (DominantIdx == 2 && Height > 75.0f)
+            if (R.Biome == EBiomeType::Mountain && Height > GenDef::MountainStoneThreshold)
             {
                 SurfaceBlock = EBlockId::Stone;
                 SubsurfaceBlock = EBlockId::Stone;
                 SubsurfaceDepth = 1;
             }
 
-            float N1 = GetNoise2D((float)WX, (float)WY, 0.01f, 1,
-                                   P.Seed + (int32)ENoiseLayer::NLayer1 * 7919);
+            float N1 = GetNoise2D((float)(SX + X), (float)(SY + Y), P.PerturbScale, 1,
+                P.Seed + (int32)ENoiseLayer::NPerturb1 * 7919);
+            float N2 = GetNoise2D((float)(SX + X), (float)(SY + Y), P.PerturbScale, 1,
+                P.Seed + (int32)ENoiseLayer::NPerturb2 * 7919);
             int32 Perturb1 = (N1 > 0.3f) ? 1 : (N1 < -0.3f) ? -1 : 0;
-
-            float N2 = GetNoise2D((float)WX, (float)WY, 0.01f, 1,
-                                   P.Seed + (int32)ENoiseLayer::NLayer2 * 7919);
             int32 Perturb2 = (N2 > 0.3f) ? 1 : (N2 < -0.3f) ? -1 : 0;
 
             int32 StoneBoundary = (int32)(Height - SubsurfaceDepth) + Perturb1;
             int32 SubBoundary = (int32)(Height - 1) + Perturb2;
-
             StoneBoundary = FMath::Clamp(StoneBoundary, 0, WORLD_HEIGHT - 1);
             SubBoundary = FMath::Clamp(SubBoundary, StoneBoundary + 1, WORLD_HEIGHT);
 
-            uint8 Top[TOP_LAYERS];
             uint8 EH = (uint8)Height;
+            uint8 Top[TOP_LAYERS];
 
             for (int32 Layer = 0; Layer < TOP_LAYERS; Layer++)
             {
@@ -163,9 +222,19 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
                     Top[Layer] = (uint8)SurfaceBlock;
             }
 
+            if (R.WaterSurface > 0)
+            {
+                int32 FloorLayers = FMath::Min(P.WaterFloorDepth, TOP_LAYERS);
+                for (int32 Layer = 0; Layer < FloorLayers; Layer++)
+                    Top[Layer] = (uint8)EBlockId::Sand;
+            }
+
+            if (bIsShore[X][Y])
+                Top[0] = (uint8)EBlockId::Sand;
+
             ChunkData.SetColumn(X, Y, EH, Top);
+            ChunkData.SetWaterColumn(X, Y, R.WaterSurface);
         }
-    }
 
     ChunkData.bIsGenerated = true;
 }
@@ -175,8 +244,13 @@ void UWorldGeneratorComponent::GenerateChunk(FChunkData& ChunkData)
     GenerateChunkData(ChunkData, CaptureParams());
 }
 
+EBiomeType UWorldGeneratorComponent::GetBiomeAt(int32 WX, int32 WY, const FGeneratorParams& P)
+{
+    return ComputeColumnAt(WX, WY, P).Biome;
+}
+
 float UWorldGeneratorComponent::GetHeight(int32 WorldX, int32 WorldY) const
 {
     FGeneratorParams P = CaptureParams();
-    return ComputeHeightAt(WorldX, WorldY, P).Height;
+    return ComputeColumnAt(WorldX, WorldY, P).Height;
 }

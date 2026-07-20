@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "AethelgardTerrain/BlockRegistry.h"
+#include "AethelgardTerrain/WorldGeneratorComponent.h"
 #include "AethelgardHUD.generated.h"
 
 class AVoxelWorld;
@@ -25,7 +26,7 @@ private:
 
     void DrawDebugInfo();
     void DrawLine(float X, float& Y, const FString& Text, const FColor& Color, float Scale = 1.0f);
-    static FString GetBiomeName(float BiomeValue);
+    static FString GetBiomeName(EBiomeType Biome);
     static FString GetBlockName(EBlockId BlockId);
 
     FString CachedPosition;

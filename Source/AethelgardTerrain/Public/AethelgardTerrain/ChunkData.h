@@ -8,8 +8,8 @@
 
 constexpr int32 CHUNK_SIZE = 32;
 constexpr int32 CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
-constexpr int32 WORLD_HEIGHT = 256;
-constexpr int32 TOP_LAYERS = 3;
+constexpr int32 WORLD_HEIGHT = 512;
+constexpr int32 TOP_LAYERS = 8;
 
 USTRUCT()
 struct AETHELGARDTERRAIN_API FChunkData
@@ -27,6 +27,9 @@ struct AETHELGARDTERRAIN_API FChunkData
     UPROPERTY()
     TMap<int32, uint8> Overrides;
 
+    UPROPERTY()
+    TArray<uint8> WaterLevel;
+
     bool bIsGenerated = false;
     bool bHasOverrides = false;
 
@@ -35,6 +38,7 @@ struct AETHELGARDTERRAIN_API FChunkData
         Position = InPosition;
         HeightData.Init(0, CHUNK_AREA);
         TopBlocks.Init(static_cast<uint8>(EBlockId::Stone), CHUNK_AREA * TOP_LAYERS);
+        WaterLevel.Init(0, CHUNK_AREA);
         Overrides.Empty();
         bIsGenerated = false;
         bHasOverrides = false;
@@ -62,7 +66,11 @@ struct AETHELGARDTERRAIN_API FChunkData
         uint8 H = HeightData[ColIdx];
 
         if (Z >= H)
+        {
+            if (Z < WaterLevel[ColIdx])
+                return EBlockId::Water;
             return EBlockId::Air;
+        }
 
         int32 LayerIdx = H - 1 - Z;
         if (LayerIdx < TOP_LAYERS)
@@ -94,5 +102,15 @@ struct AETHELGARDTERRAIN_API FChunkData
         HeightData[ColIdx] = Height;
         for (int32 i = 0; i < TOP_LAYERS; i++)
             TopBlocks[ColIdx * TOP_LAYERS + i] = Top[i];
+    }
+
+    void SetWaterColumn(int32 X, int32 Y, uint8 InWaterLevel)
+    {
+        WaterLevel[GetColumnIndex(X, Y)] = InWaterLevel;
+    }
+
+    uint8 GetWaterColumn(int32 X, int32 Y) const
+    {
+        return WaterLevel[GetColumnIndex(X, Y)];
     }
 };
