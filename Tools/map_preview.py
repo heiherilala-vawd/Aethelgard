@@ -1,318 +1,225 @@
 #!/usr/bin/env python3
-"""
-Carte de prévisualisation des biomes — Aethelgard.
-Utilise les mêmes paramètres et algorithmes que GenerationDefaults.h.
-Modifie la section PARAMS pour tester de nouveaux réglages.
+"""Carte de prévisualisation des biomes — Aethelgard. 10-step pipeline."""
 
-Usage:
-    pip install -r requirements.txt
-    python map_preview.py [--size 1024] [--seed 0] [--out preview.png]
-"""
-
-import math
-import random
-import argparse
-import sys
+import math, random, argparse, sys
 from dataclasses import dataclass
 from typing import Tuple
-
-import noise  # pip install noise
+import noise
 from PIL import Image
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PARAMÈTRES  —  modifie cette section pour tester de nouveaux réglages
-# Doit correspondre à GenerationDefaults.h
-# ═══════════════════════════════════════════════════════════════════════════════
-
 PARAMS = {
-    # Bruits — Macro
-    "macro_scale": 0.0002,
-    "macro_amplitude": 130.0,
-    "macro_octaves": 2,
-    "macro_persistence": 0.7,
-    "macro_lacunarity": 4.0,
-    # Bruits — BaseShape
-    "base_shape_scale": 0.001,
-    "base_shape_amplitude": 15.0,
-    "base_shape_persistence": 0.5,
-    "base_shape_lacunarity": 2.0,
-    # Bruits — Méso
-    "meso_scale": 0.025,
-    "meso_amplitude": 8.0,
-    "meso_octaves": 2,
-    "meso_persistence": 0.5,
-    "meso_lacunarity": 2.0,
-    # Bruits — Micro
-    "micro_scale": 0.08,
-    "micro_amplitude": 3.0,
-    "micro_octaves": 1,
-    "micro_persistence": 0.5,
-    "micro_lacunarity": 2.0,
-    # Élévation
-    "global_elevation": 75.0,
-    # Zonage
-    "sea_level": 70.0,
-    "mountain_start": 110.0,
-    "max_height": 200.0,
-    # Voronoï (séparation biomes)
-    "voronoi_scale": 0.002,
-    # Eau
-    "lake_threshold": 95.0,
-    "lake_depth": 6,
-    "sea_depth_slope": 0.05,
-    "sea_max_depth": 25.0,
-    "lake_depth_slope": 0.05,
-    # Montagne
-    "mountain_shape_scale": 0.03,
-    "mountain_shape_amplitude": 90.0,
-    "mountain_shape_persistence": 0.5,
-    "mountain_shape_lacunarity": 2.0,
-    # Collines
-    "hill_scale": 0.1,
-    "hill_amplitude": 2.0,
-    # Divers
-    "lake_noise_scale": 0.01,
-    "mountain_stone_threshold": 120.0,
-    # Hauteurs admissibles par biome (zone médiane)
-    "plains_min_height": 1.0,
-    "plains_max_height": 110.0,
-    "desert_min_height": 1.0,
-    "desert_max_height": 95.0,
-    "forest_min_height": 1.0,
-    "forest_max_height": 110.0,
+    "macro_scale": 0.0004, "macro_amplitude": 160.0, "macro_octaves": 2,
+    "macro_persistence": 0.5, "macro_lacunarity": 4.0,
+    "base_shape_scale": 0.001, "base_shape_amplitude": 15.0,
+    "base_shape_persistence": 0.5, "base_shape_lacunarity": 2.0,
+    "mountain_folly_scale": 0.002, "mountain_folly_amplitude": 350.0, "mountain_folly_bias": 0.63,
+    "biome_sep_scale": 0.04, "biome_sep_octaves": 2,
+    "temp_scale": 0.0003, "humid_scale": 0.001, "glacier_threshold": 0.25,
+    "temp_perturb_scale": 0.005, "temp_perturb_amplitude": 0.15,
+    "humid_perturb_scale": 0.005, "humid_perturb_amplitude": 0.15,
+    # Ice age: 0.0=None, 1.0=full (shifts effective glacier threshold toward 1)
+    "ice_age_factor": 0.1,
+    # Affinity-based scoring: distance-to-ideal-point with Gaussian falloff
+    "temp_weight": 1.0, "humid_weight": 1.0, "height_weight": 1.0, "affinity_sharpness": 3.0,
+    # Forest: prefers cool+humid
+    "forest_temp_affinity": 0.75, "forest_humid_affinity": 0.8, "forest_height_affinity": 0.5, "forest_adjust": 1,
+    # Desert: prefers hot+dry
+    "desert_temp_affinity": 0.9, "desert_humid_affinity": 0.15, "desert_height_affinity": 0.5, "desert_adjust": 1.2,
+    # Plains: generalist
+    "plains_temp_affinity": 0.5, "plains_humid_affinity": 0.5, "plains_height_affinity": 0.5, "plains_adjust": 0.6,
+    "meso_scale": 0.02, "meso_amplitude": 8.0, "meso_octaves": 2,
+    "meso_persistence": 0.5, "meso_lacunarity": 2.0,
+    "micro_scale": 0.08, "micro_amplitude": 1.0, "micro_octaves": 1,
+    "micro_persistence": 0.5, "micro_lacunarity": 2.0,
+    "global_elevation": 85.0,
+    "sea_level": 80.0, "mountain_start": 120.0, "max_height": 220.0,
+    "plains_hill_scale": 0.03, "plains_hill_amplitude": 5.0,
+    "desert_dune_scale": 0.015, "desert_dune_amplitude": 6.0,
+    "mountain_detail_scale": 0.01, "mountain_detail_amplitude": 12.0,
+    "mountain_lift_scale": 0.004, "mountain_lift_amplitude": 40.0,
+    "mountain_rough_scale": 0.015, "mountain_rough_threshold": 0.35,
+    "mountain_rough_amplitude": 15.0, "mountain_rough_detail_scale": 0.008,
+    "mountain_rock_threshold": 130.0, "mountain_snow_threshold": 170.0,
+    "biome_blend_distance": 25.0,
+    # Lakes: threshold [0,1] controls chance, diameter controls circle size in blocks
+    "lake_noise_threshold": 0.65, "lake_circle_diameter": 44.0, "lake_depth": 6, "lake_depth_slope": 0.05,
+    # Rivers: threshold [0,1] controls chance, diameter controls circle size in blocks
+    "river_noise_threshold": 0.08, "river_circle_diameter": 38.0, "river_depth": 3.0,
+    "sea_depth_slope": 0.05, "sea_max_depth": 25.0,
+    "sea_floor_scale": 0.02, "sea_floor_amplitude": 5.0,
+    "beach_width": 15.0,
 }
 
-# Couches de bruit (mêmes indices que ENoiseLayer)
-N_MACRO = 0
-N_BASESHAPE = 1
-N_MESO = 2
-N_MICRO = 3
-N_VORONOI = 4
-N_MOUNTAINSHAPE = 5
-N_HILLS = 6
-N_LAKE = 7
-
-BIOME_HEIGHT_RANGES = None  # built from PARAMS at startup
-
-
-def _build_ranges(p: dict):
-    global BIOME_HEIGHT_RANGES
-    BIOME_HEIGHT_RANGES = [
-        (p["plains_min_height"], p["plains_max_height"]),
-        (p["desert_min_height"], p["desert_max_height"]),
-        (p["mountain_start"],    p["max_height"]),
-        (p["forest_min_height"], p["forest_max_height"]),
-    ]
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# BRUITS  (reproduisent le comportement C++)
-# ═══════════════════════════════════════════════════════════════════════════════
+N_MACRO, N_BASESHAPE, N_MOUNTAIN_FOLLY = 0, 1, 2
+N_BIOME_SEP, N_TEMPERATURE, N_HUMIDITY = 3, 4, 5
+N_TEMP_PERTURB, N_HUMID_PERTURB = 6, 7
+N_MESO, N_MICRO = 8, 9
+N_PLAINS_HILL, N_DESERT_DUNE, N_MOUNTAIN_DETAIL = 10, 11, 12
+N_SEA_FLOOR, N_MOUNTAIN_ROUGH = 13, 14
+N_LAKE, N_RIVER = 15, 16
+N_PERTURB1, N_PERTURB2 = 17, 18
 
 _offset_cache = {}
+def _make_offset(seed): rng = random.Random(seed); return (rng.random()*10000, rng.random()*10000)
 
-
-def _make_offset(seed: int) -> Tuple[float, float]:
-    rng = random.Random(seed)
-    return (rng.random() * 10000.0, rng.random() * 10000.0)
-
-
-def perlin_octaves(x: float, y: float, scale: float,
-                   octaves: int, seed: int,
-                   persistence: float = 0.5,
-                   lacunarity: float = 2.0) -> float:
-    value = 0.0
-    amplitude = 1.0
-    max_amp = 0.0
-    freq = 1.0
-
+def perlin(x, y, scale, octaves, seed, persistence=0.5, lacunarity=2.0):
+    v, amp, ma, f = 0.0, 1.0, 0.0, 1.0
     for i in range(octaves):
-        key = seed + i * 7919
-        if key not in _offset_cache:
-            _offset_cache[key] = _make_offset(key)
+        key = seed + i*7919
+        if key not in _offset_cache: _offset_cache[key] = _make_offset(key)
         ox, oy = _offset_cache[key]
+        v += amp * noise.pnoise2(x*scale*f+ox, y*scale*f+oy, octaves=1, repeatx=1024, repeaty=1024, base=0)
+        ma += amp; amp *= persistence; f *= lacunarity
+    return v / ma
 
-        value += amplitude * noise.pnoise2(
-            x * scale * freq + ox,
-            y * scale * freq + oy,
-            octaves=1, repeatx=1024, repeaty=1024, base=0
-        )
-        max_amp += amplitude
-        amplitude *= persistence
-        freq *= lacunarity
+def base_height(wx, wy, p, seed):
+    m = perlin(float(wx), float(wy), p["macro_scale"], p["macro_octaves"], seed+N_MACRO*7919, p["macro_persistence"], p["macro_lacunarity"])
+    bs = abs(perlin(float(wx), float(wy), p["base_shape_scale"], 1, seed+N_BASESHAPE*7919, p["base_shape_persistence"], p["base_shape_lacunarity"]))
+    return p["global_elevation"] + m*p["macro_amplitude"] + bs*p["base_shape_amplitude"]
 
-    return value / max_amp
+def score_biome(t, h, world_height, p, temp_aff, humid_aff, height_aff, adjust):
+    nh = max(0.0, min((world_height-1.0)/(p["max_height"]-1.0), 1.0))
+    dist = p["temp_weight"]*abs(t-temp_aff) + p["humid_weight"]*abs(h-humid_aff) + p["height_weight"]*abs(nh-height_aff)
+    return math.exp(-dist*dist*p["affinity_sharpness"])*adjust
 
+def select_biome(wx, wy, p, seed):
+    height = max(1.0, min(base_height(wx, wy, p, seed), p["max_height"]))
+    if height < p["sea_level"]: return 0, 0.0
+    if height >= p["mountain_start"]: return 2, max(0.0, min((height-p["mountain_start"])/p["biome_blend_distance"], 1.0))
+    temp = max(0.0, min((perlin(float(wx), float(wy), p["temp_scale"], 1, seed+N_TEMPERATURE*7919)+1)*0.5, 1.0))
+    humid = max(0.0, min((perlin(float(wx), float(wy), p["humid_scale"], 1, seed+N_HUMIDITY*7919)+1)*0.5, 1.0))
+    temp = max(0.0, min(temp + perlin(float(wx), float(wy), p["temp_perturb_scale"], 1, seed+N_TEMP_PERTURB*7919)*p["temp_perturb_amplitude"], 1.0))
+    humid = max(0.0, min(humid + perlin(float(wx), float(wy), p["humid_perturb_scale"], 1, seed+N_HUMID_PERTURB*7919)*p["humid_perturb_amplitude"], 1.0))
+    eff_glacier = p["glacier_threshold"] + p["ice_age_factor"]*(1.0-p["glacier_threshold"])
+    if temp < eff_glacier: biome = 4
+    else:
+        fs = score_biome(temp, humid, height, p, p["forest_temp_affinity"], p["forest_humid_affinity"], p["forest_height_affinity"], p["forest_adjust"])
+        ds = score_biome(temp, humid, height, p, p["desert_temp_affinity"], p["desert_humid_affinity"], p["desert_height_affinity"], p["desert_adjust"])
+        ps = score_biome(temp, humid, height, p, p["plains_temp_affinity"], p["plains_humid_affinity"], p["plains_height_affinity"], p["plains_adjust"])
+        if fs>=ds and fs>=ps: biome=3
+        elif ds>=ps: biome=1
+        else: biome=0
 
-def voronoi_select(wx: int, wy: int, scale: float, seed: int) -> int:
-    """Voronoi → biome zone mediane. Map {0,1,2} → {Plains=0,Desert=1,Forest=3}."""
-    cx = int(math.floor(wx * scale))
-    cy = int(math.floor(wy * scale))
-    h = cx * 73856093 + cy * 19349663 + seed * 83492791
-    rng = random.Random(h)
-    raw = rng.randint(0, 2)
-    return [0, 1, 3][raw]
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# GÉNÉRATION  (reproduit ComputeBaseHeight + ComputeColumnAt)
-# ═══════════════════════════════════════════════════════════════════════════════
+    ds_h=height-p["sea_level"]; dm_h=p["mountain_start"]-height; dg_h=abs(temp-eff_glacier)
+    g = max(0.0, min(min(ds_h,dm_h,dg_h)/p["biome_blend_distance"], 1.0))
+    return biome, g
 
 @dataclass
-class ColumnResult:
-    height: float
-    biome: int
-    water_surface: int
+class ColumnResult: height: float; biome: int; water_surface: int
 
+def folly_contribution(wx, wy, scale, amplitude, bias, t, seed):
+    raw = perlin(float(wx), float(wy), scale, 1, seed)
+    n = (raw+1.0)*0.5
+    m = max(n-bias, 0.0)
+    return m*amplitude*t
 
-def compute_base_height(wx: int, wy: int, p: dict, seed: int) -> float:
-    macro = perlin_octaves(float(wx), float(wy),
-                           p["macro_scale"], p["macro_octaves"],
-                           seed + N_MACRO * 7919,
-                           p["macro_persistence"], p["macro_lacunarity"])
-    baseshape = abs(perlin_octaves(float(wx), float(wy),
-                                   p["base_shape_scale"], 1,
-                                   seed + N_BASESHAPE * 7919,
-                                   p["base_shape_persistence"], p["base_shape_lacunarity"]))
-    meso = perlin_octaves(float(wx), float(wy),
-                          p["meso_scale"], p["meso_octaves"],
-                          seed + N_MESO * 7919,
-                          p["meso_persistence"], p["meso_lacunarity"])
-    micro = perlin_octaves(float(wx), float(wy),
-                           p["micro_scale"], p["micro_octaves"],
-                           seed + N_MICRO * 7919,
-                           p["micro_persistence"], p["micro_lacunarity"])
-
-    return (p["global_elevation"]
-            + macro * p["macro_amplitude"]
-            + baseshape * p["base_shape_amplitude"]
-            + meso * p["meso_amplitude"]
-            + micro * p["micro_amplitude"])
-
-
-def compute_column(wx: int, wy: int, p: dict, seed: int) -> ColumnResult:
-    height = compute_base_height(wx, wy, p, seed)
-    height = max(1.0, min(height, p["max_height"]))
-
-    # ---- MER ----
-    if height < p["sea_level"]:
-        raw = p["sea_level"] - height
-        if raw <= p["sea_max_depth"]:
-            depth = raw
+def compute_column(wx, wy, p, seed):
+    height = max(1.0, min(base_height(wx, wy, p, seed), p["max_height"]))
+    if height >= p["sea_level"]:
+        t = max(0.0, min((height-p["sea_level"])/20.0, 1.0))
+        fs = seed+N_MOUNTAIN_FOLLY*7919
+        c1 = folly_contribution(wx, wy, p["mountain_folly_scale"], p["mountain_folly_amplitude"], p["mountain_folly_bias"], t, fs)
+        c2 = folly_contribution(wx, wy, p["mountain_folly_scale"]*0.8, p["mountain_folly_amplitude"]*0.8, p["mountain_folly_bias"], t, fs+1)
+        c3 = folly_contribution(wx, wy, p["mountain_folly_scale"]*1.1, p["mountain_folly_amplitude"]*1.1, p["mountain_folly_bias"], t, fs+2)
+        height += max(c1, c2, c3)
+        height = max(1.0, min(height, p["max_height"]))
+    is_sea = height < p["sea_level"]
+    is_mountain = height >= p["mountain_start"]
+    height_pre_relief = height
+    biome = 0
+    ws = 0
+    if is_sea:
+        sf = perlin(float(wx), float(wy), p["sea_floor_scale"], 1, seed+N_SEA_FLOOR*7919)*p["sea_floor_amplitude"]
+        raw = p["sea_level"]-height
+        d = raw if raw<=p["sea_max_depth"] else p["sea_max_depth"]+(raw-p["sea_max_depth"])*p["sea_depth_slope"]
+        height = p["sea_level"]-d+sf
+        height = max(1.0, min(height, p["max_height"]))
+        ws = int(min(max(p["sea_level"],0),255))
+        biome = 0
+    if is_mountain:
+        biome = 2
+        mg = max(0.0, min((height-p["mountain_start"])/p["biome_blend_distance"], 1.0))
+        height += perlin(float(wx), float(wy), p["mountain_detail_scale"], 2, seed+N_MOUNTAIN_DETAIL*7919)*p["mountain_detail_amplitude"]*mg
+        mf = max(0.0, min((height-p["mountain_start"])/(p["max_height"]-p["mountain_start"]), 1.0))
+        lift = math.sin(mf * math.pi * 0.5)
+        height += perlin(float(wx), float(wy), p["mountain_lift_scale"], 1, seed+N_MOUNTAIN_DETAIL*7919+31337)*p["mountain_lift_amplitude"]*lift
+        rn = perlin(float(wx), float(wy), p["mountain_rough_scale"], 1, seed+N_MOUNTAIN_ROUGH*7919)
+        if rn > p["mountain_rough_threshold"]:
+            rough_mask = (rn-p["mountain_rough_threshold"])/(1.0-p["mountain_rough_threshold"])
+            d1 = perlin(float(wx), float(wy), p["mountain_rough_detail_scale"], 1, seed+N_MOUNTAIN_ROUGH*7919+7901)
+            d2 = perlin(float(wx), float(wy), p["mountain_rough_detail_scale"]*2.0, 1, seed+N_MOUNTAIN_ROUGH*7919+7907)
+            height += (d1*0.6+d2*0.4)*p["mountain_rough_amplitude"]*rough_mask*mf
+        height = max(1.0, min(height, p["max_height"]))
+    if not is_sea and not is_mountain:
+        temp = max(0.0, min((perlin(float(wx), float(wy), p["temp_scale"], 1, seed+N_TEMPERATURE*7919)+1)*0.5, 1.0))
+        humid = max(0.0, min((perlin(float(wx), float(wy), p["humid_scale"], 1, seed+N_HUMIDITY*7919)+1)*0.5, 1.0))
+        temp = max(0.0, min(temp + perlin(float(wx), float(wy), p["temp_perturb_scale"], 1, seed+N_TEMP_PERTURB*7919)*p["temp_perturb_amplitude"], 1.0))
+        humid = max(0.0, min(humid + perlin(float(wx), float(wy), p["humid_perturb_scale"], 1, seed+N_HUMID_PERTURB*7919)*p["humid_perturb_amplitude"], 1.0))
+        eff_glacier = p["glacier_threshold"] + p["ice_age_factor"]*(1.0-p["glacier_threshold"])
+        if temp < eff_glacier: biome = 4
         else:
-            depth = p["sea_max_depth"] + (raw - p["sea_max_depth"]) * p["sea_depth_slope"]
-        height = p["sea_level"] - depth
-        height = max(1.0, min(height, p["max_height"]))
-        ws = int(min(max(p["sea_level"], 0), 255))
-        return ColumnResult(height=height, biome=0, water_surface=ws)
-
-    # ---- ZONE MÉDIANE ----
-    if height < p["mountain_start"]:
-        biome = voronoi_select(wx, wy, p["voronoi_scale"],
-                               seed + N_VORONOI * 7919)
-        pre_hill = height
-
-        # Collines (Plaines=0, Desert=1)
-        if biome in (0, 1):
-            hill = abs(perlin_octaves(float(wx), float(wy),
-                                      p["hill_scale"], 1,
-                                      seed + N_HILLS * 7919))
-            height += hill * p["hill_amplitude"]
-
-        # Lacs
-        lake_noise = perlin_octaves(float(wx), float(wy),
-                                    p["lake_noise_scale"], 1,
-                                    seed + N_LAKE * 7919)
-        ws = 0
-        if lake_noise < -0.25 and pre_hill < p["lake_threshold"] and biome != 1:
-            lake_surface = pre_hill
-            lake_floor = height - p["lake_depth"] - p["lake_depth_slope"] * 4.0
-            height = max(1.0, min(lake_floor, p["max_height"]))
-            ws = int(min(max(lake_surface, 0), 255))
-
-        # Blend biome height range (doux, pas de clamp dur)
-        min_h, max_h = BIOME_HEIGHT_RANGES[biome]
-        if height < min_h:
-            height = height + (min_h - height) * 0.5
-        elif height > max_h:
-            height = height + (max_h - height) * 0.5
-        height = max(1.0, min(height, p["max_height"]))
-
-        return ColumnResult(height=height, biome=biome, water_surface=ws)
-
-    # ---- MONTAGNE ----
-    mfactor = (height - p["mountain_start"]) / (p["max_height"] - p["mountain_start"])
-    mfactor = max(0.0, min(mfactor, 1.0))
-    shape = perlin_octaves(float(wx), float(wy),
-                           p["mountain_shape_scale"], 2,
-                           seed + N_MOUNTAINSHAPE * 7919,
-                           p["mountain_shape_persistence"], p["mountain_shape_lacunarity"])
-    height += shape * p["mountain_shape_amplitude"] * mfactor * mfactor
+            fs = score_biome(temp, humid, height, p, p["forest_temp_affinity"], p["forest_humid_affinity"], p["forest_height_affinity"], p["forest_adjust"])
+            ds = score_biome(temp, humid, height, p, p["desert_temp_affinity"], p["desert_humid_affinity"], p["desert_height_affinity"], p["desert_adjust"])
+            ps = score_biome(temp, humid, height, p, p["plains_temp_affinity"], p["plains_humid_affinity"], p["plains_height_affinity"], p["plains_adjust"])
+            if fs>=ds and fs>=ps: biome=3
+            elif ds>=ps: biome=1
+            else: biome=0
+        ds_h=height-p["sea_level"]; dm_h=p["mountain_start"]-height; dg_h=abs(temp-eff_glacier)
+        g = max(0.0, min(min(ds_h,dm_h,dg_h)/p["biome_blend_distance"], 1.0))
+        if biome == 0: height += abs(perlin(float(wx), float(wy), p["plains_hill_scale"], 1, seed+N_PLAINS_HILL*7919))*p["plains_hill_amplitude"]*g
+        elif biome == 1: height += abs(perlin(float(wx), float(wy), p["desert_dune_scale"], 1, seed+N_DESERT_DUNE*7919))*p["desert_dune_amplitude"]*g
+        height_pre_relief = height
+    height += perlin(float(wx), float(wy), p["meso_scale"], p["meso_octaves"], seed+N_MESO*7919, p["meso_persistence"], p["meso_lacunarity"])*p["meso_amplitude"]
+    height += perlin(float(wx), float(wy), p["micro_scale"], p["micro_octaves"], seed+N_MICRO*7919, p["micro_persistence"], p["micro_lacunarity"])*p["micro_amplitude"]
+    if height >= p["sea_level"]:
+        lake_scale = 1.0/max(p["lake_circle_diameter"], 1.0)
+        river_scale = 1.0/max(p["river_circle_diameter"], 1.0)
+        ln = perlin(float(wx), float(wy), lake_scale, 1, seed+N_LAKE*7919)
+        rn = abs(perlin(float(wx), float(wy), river_scale, 1, seed+N_RIVER*7919))
+        if abs(ln) > p["lake_noise_threshold"]:
+            height = max(1.0, min(height-p["lake_depth"], p["max_height"]))
+            ws = int(min(max(height_pre_relief, 0), 255))
+        elif rn < p["river_noise_threshold"] and height >= p["sea_level"]+2:
+            rf = 1.0-(rn/p["river_noise_threshold"])
+            rp = height
+            height = max(1.0, min(height-rf*p["river_depth"], p["max_height"]))
+            ws = int(min(max(rp-1, 0), 255))
     height = max(1.0, min(height, p["max_height"]))
-    return ColumnResult(height=height, biome=2, water_surface=0)
+    return ColumnResult(height=height, biome=biome, water_surface=ws)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# RENDU
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def biome_color(biome: int, height: float, water: int, p: dict) -> Tuple[int, int, int]:
+def biome_color(biome, height, water, p):
     if water > 0:
+        if biome == 4: return (180, 210, 240)
         return (30, 100, 200)
-    if height < p["sea_level"]:
-        return (30, 80, 160)
-    if biome == 0:   # Plaines
-        return (34, 139, 34)
-    elif biome == 1: # Désert
-        return (210, 180, 100)
-    elif biome == 2: # Montagne
-        if height > p["mountain_stone_threshold"]:
-            return (160, 160, 160)
-        else:
-            return (80, 130, 60)
-    else:            # Forêt
-        return (20, 100, 20)
+    if height < p["sea_level"]: return (30, 80, 160)
+    if biome == 0: return (34, 139, 34)
+    if biome == 1: return (210, 180, 100)
+    if biome == 2:
+        if height > p["mountain_snow_threshold"]: return (240, 240, 240)
+        if height > p["mountain_rock_threshold"]: return (160, 160, 160)
+        return (80, 130, 60)
+    if biome == 3: return (20, 100, 20)
+    if biome == 4: return (200, 220, 240)
+    return (255, 0, 255)
 
-
-def generate_map(size: int, p: dict, seed: int) -> Image.Image:
-    _build_ranges(p)
-    img = Image.new("RGB", (size, size))
-    pix = img.load()
-
-    world_range = 32768
-    step = world_range / size
-
-    print(f"Génération {size}×{size} pixels  (seed={seed}) ...")
-
+def generate_map(size, p, seed):
+    img = Image.new("RGB", (size, size)); pix = img.load()
+    wr, step = 32768, 32768/size
+    print(f"{size}x{size} seed={seed} ...")
     for py in range(size):
-        if py % 128 == 0:
-            print(f"  ligne {py}/{size}")
-        wy = int((py - size / 2) * step)
+        if py%128==0: print(f"  line {py}/{size}")
+        wy = int((py-size/2)*step)
         for px in range(size):
-            wx = int((px - size / 2) * step)
+            wx = int((px-size/2)*step)
             col = compute_column(wx, wy, p, seed)
-            c = biome_color(col.biome, col.height, col.water_surface, p)
-            pix[px, py] = c
-
+            pix[px, py] = biome_color(col.biome, col.height, col.water_surface, p)
     return img
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════════════
-
 def main():
-    parser = argparse.ArgumentParser(description="Prévisualisation biomes Aethelgard")
-    parser.add_argument("--size", type=int, default=1024)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--out", type=str, default="carte.png")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--size", type=int, default=1024); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--out", type=str, default="carte.png")
+    a = ap.parse_args()
+    img = generate_map(a.size, PARAMS, a.seed); img.save(a.out)
+    print(f"\nSaved: {a.out}")
 
-    img = generate_map(args.size, PARAMS, args.seed)
-    img.save(args.out)
-    print(f"\nCarte sauvegardée : {args.out}")
-    print(f"Modifie la section PARAMS dans {sys.argv[0]} pour tester de nouveaux réglages.")
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
