@@ -189,7 +189,10 @@ struct AETHELGARDTERRAIN_API FColumnResult
 {
     float Height = 0.0f;
     EBiomeType Biome = EBiomeType::Plains;
-    uint8 WaterSurface = 0;
+    uint16 WaterSurface = 0;
+    float Temperature = 0.5f;
+    float Humidity = 0.5f;
+    bool bIsOcean = false;
 };
 
 UCLASS(ClassGroup = (Terrain), meta = (BlueprintSpawnableComponent))
@@ -459,8 +462,10 @@ public:
         return P;
     }
 
-    static void GenerateChunkData(FChunkData& ChunkData, const FGeneratorParams& P);
-    static EBiomeType GetBiomeAt(int32 WX, int32 WY, const FGeneratorParams& P);
+	static void GenerateChunkData(FChunkData& ChunkData, const FGeneratorParams& P);
+	static EBiomeType GetBiomeAt(int32 WX, int32 WY, const FGeneratorParams& P);
+	static FColumnResult ComputeRawColumnAt(int32 WX, int32 WY, const FGeneratorParams& P);
+	static const FBiomeParams& GetBiomeParams(EBiomeType Biome);
 
 private:
     static float ComputeBaseHeight(int32 WX, int32 WY, const FGeneratorParams& P);
