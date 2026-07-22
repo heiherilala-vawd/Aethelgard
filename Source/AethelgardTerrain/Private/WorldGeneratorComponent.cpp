@@ -2,6 +2,7 @@
 
 #include "AethelgardTerrain/WorldGeneratorComponent.h"
 #include "AethelgardTerrain/GenerationDefaults.h"
+#include "AethelgardTerrain/WaterGenerator.h"
 
 static float ScoreBiome(float T, float H, float WorldHeight, const FGeneratorParams& P,
     float TempAff, float HumidAff, float HeightAff, float Adjust)
@@ -203,27 +204,30 @@ FColumnResult UWorldGeneratorComponent::ComputeColumnAt(int32 WX, int32 WY, cons
     Height += GetNoise2D((float)WX, (float)WY, P.MicroScale, P.MicroOctaves,
         S + (int32)ENoiseLayer::NMicro * 7919, P.MicroPersistence, P.MicroLacunarity) * P.MicroAmplitude;
 
-    // Step 8: Lakes & Rivers (only if Height >= SeaLevel)
+    // Step 8: Water Generation
+    // Lakes: new Voronoi-based system
+    // Rivers: legacy Perlin noise system (scale ×20, depth ×5)
     if (Height >= P.SeaLevel)
     {
-        float LakeScale = 1.0f / FMath::Max(P.LakeCircleDiameter, 1.0f);
-        float RiverScale = 1.0f / FMath::Max(P.RiverCircleDiameter, 1.0f);
-        float LakeNoise = GetNoise2D((float)WX, (float)WY, LakeScale, 1, S + (int32)ENoiseLayer::NLake * 7919);
-        float RiverNoise = FMath::Abs(GetNoise2D((float)WX, (float)WY, RiverScale, 1, S + (int32)ENoiseLayer::NRiver * 7919));
-
-        if (FMath::Abs(LakeNoise) > P.LakeNoiseThreshold)
+        FWaterResult WR = UWaterGenerator::ComputeWater(WX, WY, Height, P);
+        if (WR.bIsWater)
         {
-            float LakeFloor = Height - (float)P.LakeDepth;
-            Height = FMath::Clamp(LakeFloor, 1.0f, P.MaxHeight);
-            Result.WaterSurface = (uint8)FMath::Clamp(HeightPreRelief, 0.0f, 255.0f);
+            Height = WR.WaterBottom;
+            Result.WaterSurface = WR.WaterSurface;
         }
-        else if (RiverNoise < P.RiverNoiseThreshold && Height >= P.SeaLevel + 2.0f)
+        else
         {
-            float RiverFactor = 1.0f - (RiverNoise / P.RiverNoiseThreshold);
-            float RiverPreHeight = Height;
-            Height -= RiverFactor * P.RiverDepth;
-            Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
-            Result.WaterSurface = (uint8)FMath::Clamp(RiverPreHeight - 1.0f, 0.0f, 255.0f);
+            float RiverScale = 1.0f / FMath::Max(P.RiverCircleDiameter, 1.0f);
+            float RiverNoise = FMath::Abs(GetNoise2D((float)WX, (float)WY, RiverScale, 1, S + (int32)ENoiseLayer::NRiver * 7919));
+
+            if (RiverNoise < P.RiverNoiseThreshold && Height >= P.SeaLevel + 2.0f)
+            {
+                float RiverFactor = 1.0f - (RiverNoise / P.RiverNoiseThreshold);
+                float RiverPreHeight = Height;
+                Height -= RiverFactor * P.RiverDepth;
+                Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
+                Result.WaterSurface = (uint8)FMath::Clamp(RiverPreHeight - 1.0f, 0.0f, 255.0f);
+            }
         }
     }
 

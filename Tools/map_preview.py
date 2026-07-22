@@ -8,46 +8,45 @@ import noise
 from PIL import Image
 
 PARAMS = {
-    "macro_scale": 0.0004, "macro_amplitude": 160.0, "macro_octaves": 2,
+    "macro_scale": 0.0001, "macro_amplitude": 220.0, "macro_octaves": 2,
     "macro_persistence": 0.5, "macro_lacunarity": 4.0,
     "base_shape_scale": 0.001, "base_shape_amplitude": 15.0,
     "base_shape_persistence": 0.5, "base_shape_lacunarity": 2.0,
     "mountain_folly_scale": 0.002, "mountain_folly_amplitude": 350.0, "mountain_folly_bias": 0.63,
     "biome_sep_scale": 0.04, "biome_sep_octaves": 2,
-    "temp_scale": 0.0003, "humid_scale": 0.001, "glacier_threshold": 0.25,
-    "temp_perturb_scale": 0.005, "temp_perturb_amplitude": 0.15,
-    "humid_perturb_scale": 0.005, "humid_perturb_amplitude": 0.15,
-    # Ice age: 0.0=None, 1.0=full (shifts effective glacier threshold toward 1)
+    "temp_scale": 0.0001, "humid_scale": 0.0005, "glacier_threshold": 0.25,
+    "temp_perturb_scale": 0.001, "temp_perturb_amplitude": 0.15,
+    "humid_perturb_scale": 0.001, "humid_perturb_amplitude": 0.15,
     "ice_age_factor": 0.1,
-    # Affinity-based scoring: distance-to-ideal-point with Gaussian falloff
     "temp_weight": 1.0, "humid_weight": 1.0, "height_weight": 1.0, "affinity_sharpness": 3.0,
-    # Forest: prefers cool+humid
     "forest_temp_affinity": 0.75, "forest_humid_affinity": 0.8, "forest_height_affinity": 0.5, "forest_adjust": 1,
-    # Desert: prefers hot+dry
-    "desert_temp_affinity": 0.9, "desert_humid_affinity": 0.15, "desert_height_affinity": 0.5, "desert_adjust": 1.2,
-    # Plains: generalist
+    "desert_temp_affinity": 0.9, "desert_humid_affinity": 0.15, "desert_height_affinity": 0.45, "desert_adjust": 1.2,
     "plains_temp_affinity": 0.5, "plains_humid_affinity": 0.5, "plains_height_affinity": 0.5, "plains_adjust": 0.6,
     "meso_scale": 0.02, "meso_amplitude": 8.0, "meso_octaves": 2,
     "meso_persistence": 0.5, "meso_lacunarity": 2.0,
     "micro_scale": 0.08, "micro_amplitude": 1.0, "micro_octaves": 1,
     "micro_persistence": 0.5, "micro_lacunarity": 2.0,
     "global_elevation": 85.0,
-    "sea_level": 80.0, "mountain_start": 120.0, "max_height": 220.0,
+    "sea_level": 80.0, "mountain_start": 150.0, "max_height": 220.0,
     "plains_hill_scale": 0.03, "plains_hill_amplitude": 5.0,
     "desert_dune_scale": 0.015, "desert_dune_amplitude": 6.0,
     "mountain_detail_scale": 0.01, "mountain_detail_amplitude": 12.0,
     "mountain_lift_scale": 0.004, "mountain_lift_amplitude": 40.0,
     "mountain_rough_scale": 0.015, "mountain_rough_threshold": 0.35,
     "mountain_rough_amplitude": 15.0, "mountain_rough_detail_scale": 0.008,
-    "mountain_rock_threshold": 130.0, "mountain_snow_threshold": 170.0,
+    "mountain_rock_threshold": 152.0, "mountain_snow_threshold": 170.0,
     "biome_blend_distance": 25.0,
-    # Lakes: threshold [0,1] controls chance, diameter controls circle size in blocks
-    "lake_noise_threshold": 0.65, "lake_circle_diameter": 44.0, "lake_depth": 6, "lake_depth_slope": 0.05,
-    # Rivers: threshold [0,1] controls chance, diameter controls circle size in blocks
-    "river_noise_threshold": 0.08, "river_circle_diameter": 38.0, "river_depth": 3.0,
+    # Lakes: Voronoi-based system
+    "voronoi_scale": 0.001, "lake_probability": 0.5,
+    "lake_max_depth": 10.0, "lake_depth_falloff": 2.0,
+    "lake_min_diameter": 100.0, "lake_max_diameter": 5000.0,
+    # Rivers: legacy Perlin noise (scale x20, depth x5)
+    "river_noise_threshold": 0.05, "river_circle_diameter": 760.0, "river_depth": 10.0,
     "sea_depth_slope": 0.05, "sea_max_depth": 25.0,
     "sea_floor_scale": 0.02, "sea_floor_amplitude": 5.0,
     "beach_width": 15.0,
+    # Shore deformation
+    "shore_deform_scale": 0.05, "shore_deform_amplitude": 3.0,
 }
 
 N_MACRO, N_BASESHAPE, N_MOUNTAIN_FOLLY = 0, 1, 2
@@ -57,7 +56,8 @@ N_MESO, N_MICRO = 8, 9
 N_PLAINS_HILL, N_DESERT_DUNE, N_MOUNTAIN_DETAIL = 10, 11, 12
 N_SEA_FLOOR, N_MOUNTAIN_ROUGH = 13, 14
 N_LAKE, N_RIVER = 15, 16
-N_PERTURB1, N_PERTURB2 = 17, 18
+N_VORONOI, N_SHORE_DEFORM = 17, 18
+N_PERTURB1, N_PERTURB2 = 19, 20
 
 _offset_cache = {}
 def _make_offset(seed): rng = random.Random(seed); return (rng.random()*10000, rng.random()*10000)
@@ -71,6 +71,31 @@ def perlin(x, y, scale, octaves, seed, persistence=0.5, lacunarity=2.0):
         v += amp * noise.pnoise2(x*scale*f+ox, y*scale*f+oy, octaves=1, repeatx=1024, repeaty=1024, base=0)
         ma += amp; amp *= persistence; f *= lacunarity
     return v / ma
+
+def voronoi(x, y, scale, seed):
+    sx = x * scale
+    sy = y * scale
+    cell_x = int(math.floor(sx))
+    cell_y = int(math.floor(sy))
+    min_d1 = float('inf')
+    min_d2 = float('inf')
+    closest_id = 0
+    for dy in range(-1, 2):
+        for dx in range(-1, 2):
+            cx = cell_x + dx
+            cy = cell_y + dy
+            hash_key = (cx * 374761393 + cy * 668265263) ^ (seed * 1274126177)
+            rng = random.Random(hash_key)
+            px = cx + rng.random()
+            py = cy + rng.random()
+            d = math.sqrt((sx - px)**2 + (sy - py)**2)
+            if d < min_d1:
+                min_d2 = min_d1
+                min_d1 = d
+                closest_id = hash_key
+            elif d < min_d2:
+                min_d2 = d
+    return closest_id, min_d1, min_d2, min_d2 - min_d1
 
 def base_height(wx, wy, p, seed):
     m = perlin(float(wx), float(wy), p["macro_scale"], p["macro_octaves"], seed+N_MACRO*7919, p["macro_persistence"], p["macro_lacunarity"])
@@ -172,18 +197,51 @@ def compute_column(wx, wy, p, seed):
     height += perlin(float(wx), float(wy), p["meso_scale"], p["meso_octaves"], seed+N_MESO*7919, p["meso_persistence"], p["meso_lacunarity"])*p["meso_amplitude"]
     height += perlin(float(wx), float(wy), p["micro_scale"], p["micro_octaves"], seed+N_MICRO*7919, p["micro_persistence"], p["micro_lacunarity"])*p["micro_amplitude"]
     if height >= p["sea_level"]:
-        lake_scale = 1.0/max(p["lake_circle_diameter"], 1.0)
-        river_scale = 1.0/max(p["river_circle_diameter"], 1.0)
-        ln = perlin(float(wx), float(wy), lake_scale, 1, seed+N_LAKE*7919)
-        rn = abs(perlin(float(wx), float(wy), river_scale, 1, seed+N_RIVER*7919))
-        if abs(ln) > p["lake_noise_threshold"]:
-            height = max(1.0, min(height-p["lake_depth"], p["max_height"]))
-            ws = int(min(max(height_pre_relief, 0), 255))
-        elif rn < p["river_noise_threshold"] and height >= p["sea_level"]+2:
-            rf = 1.0-(rn/p["river_noise_threshold"])
-            rp = height
-            height = max(1.0, min(height-rf*p["river_depth"], p["max_height"]))
-            ws = int(min(max(rp-1, 0), 255))
+        cell_id, f1, f2, edge = voronoi(float(wx), float(wy), p["voronoi_scale"], seed+N_VORONOI*7919)
+        cell_radius = 1.0 / max(p["voronoi_scale"], 0.001)
+        if f1 <= cell_radius * 0.6:
+            hash_val = (cell_id * 374761393) ^ (seed * 1274126177)
+            rng = random.Random(hash_val)
+            if rng.random() < p["lake_probability"]:
+                sample_radius = cell_radius * 0.9
+                min_boundary_h = float('inf')
+                for i in range(16):
+                    angle = i / 16.0 * 2.0 * math.pi
+                    sx = wx + math.cos(angle) * sample_radius
+                    sy = wy + math.sin(angle) * sample_radius
+                    h = perlin(sx, sy, 0.0004, 2, seed+N_MACRO*7919)
+                    h = p["global_elevation"] + h * p["macro_amplitude"]
+                    bs = abs(perlin(sx, sy, 0.001, 1, seed+N_BASESHAPE*7919))
+                    h += bs * p["base_shape_amplitude"]
+                    h += perlin(sx, sy, p["meso_scale"], p["meso_octaves"], seed+N_MESO*7919, p["meso_persistence"], p["meso_lacunarity"]) * p["meso_amplitude"]
+                    h += perlin(sx, sy, p["micro_scale"], p["micro_octaves"], seed+N_MICRO*7919, p["micro_persistence"], p["micro_lacunarity"]) * p["micro_amplitude"]
+                    min_boundary_h = min(min_boundary_h, h)
+                center_h = perlin(float(wx), float(wy), 0.0004, 2, seed+N_MACRO*7919)
+                center_h = p["global_elevation"] + center_h * p["macro_amplitude"]
+                center_bs = abs(perlin(float(wx), float(wy), 0.001, 1, seed+N_BASESHAPE*7919))
+                center_h += center_bs * p["base_shape_amplitude"]
+                center_h += perlin(float(wx), float(wy), p["meso_scale"], p["meso_octaves"], seed+N_MESO*7919, p["meso_persistence"], p["meso_lacunarity"]) * p["meso_amplitude"]
+                center_h += perlin(float(wx), float(wy), p["micro_scale"], p["micro_octaves"], seed+N_MICRO*7919, p["micro_persistence"], p["micro_lacunarity"]) * p["micro_amplitude"]
+                max_water = min(min_boundary_h, center_h + p["lake_max_depth"])
+                if height < max_water:
+                    norm_dist = max(0.0, min(f1 / (cell_radius * 0.5), 1.0))
+                    depth_factor = (1.0 - norm_dist) ** p["lake_depth_falloff"]
+                    shore_noise = perlin(float(wx), float(wy), p["shore_deform_scale"], 2, seed+N_SHORE_DEFORM*7919) * p["shore_deform_amplitude"]
+                    effective_spill = min_boundary_h + shore_noise
+                    if height < effective_spill:
+                        water_level = min(effective_spill, center_h + p["lake_max_depth"] * depth_factor)
+                        if water_level > height:
+                            diameter = f1 * 2.0 / p["voronoi_scale"]
+                            if diameter >= p["lake_min_diameter"] and diameter <= p["lake_max_diameter"]:
+                                ws = int(min(max(water_level, 0), 255))
+        if ws == 0:
+            river_scale = 1.0/max(p["river_circle_diameter"], 1.0)
+            rn = abs(perlin(float(wx), float(wy), river_scale, 1, seed+N_RIVER*7919))
+            if rn < p["river_noise_threshold"] and height >= p["sea_level"]+2:
+                rf = 1.0-(rn/p["river_noise_threshold"])
+                rp = height
+                height = max(1.0, min(height-rf*p["river_depth"], p["max_height"]))
+                ws = int(min(max(rp-1, 0), 255))
     height = max(1.0, min(height, p["max_height"]))
     return ColumnResult(height=height, biome=biome, water_surface=ws)
 

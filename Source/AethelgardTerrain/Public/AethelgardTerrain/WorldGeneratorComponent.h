@@ -38,6 +38,8 @@ enum class ENoiseLayer : int32
     NMountainRough,
     NLake,
     NRiver,
+    NVoronoi,
+    NShoreDeform,
     NPerturb1,
     NPerturb2,
     NMAX UMETA(Hidden)
@@ -169,6 +171,16 @@ struct AETHELGARDTERRAIN_API FGeneratorParams
     float SeaFloorAmplitude = GenDef::SeaFloorAmplitude;
 
     float BeachWidth = GenDef::BeachWidth;
+
+    float VoronoiScale = GenDef::VoronoiScale;
+    float LakeProbability = GenDef::LakeProbability;
+    float LakeMaxDepth = GenDef::LakeMaxDepth;
+    float LakeDepthFalloff = GenDef::LakeDepthFalloff;
+    float LakeMinDiameter = GenDef::LakeMinDiameter;
+    float LakeMaxDiameter = GenDef::LakeMaxDiameter;
+
+    float ShoreDeformScale = GenDef::ShoreDeformScale;
+    float ShoreDeformAmplitude = GenDef::ShoreDeformAmplitude;
 
     float PerturbScale = GenDef::PerturbScale;
 };
@@ -373,6 +385,24 @@ public:
     UPROPERTY(EditAnywhere, Category = "Water")
     float BeachWidth = GenDef::BeachWidth;
 
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Lake")
+    float VoronoiScale = GenDef::VoronoiScale;
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Lake")
+    float LakeProbability = GenDef::LakeProbability;
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Lake")
+    float LakeMaxDepth = GenDef::LakeMaxDepth;
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Lake")
+    float LakeDepthFalloff = GenDef::LakeDepthFalloff;
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Lake")
+    float LakeMinDiameter = GenDef::LakeMinDiameter;
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Lake")
+    float LakeMaxDiameter = GenDef::LakeMaxDiameter;
+
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Shore")
+    float ShoreDeformScale = GenDef::ShoreDeformScale;
+    UPROPERTY(EditAnywhere, Category = "Water|Gen2|Shore")
+    float ShoreDeformAmplitude = GenDef::ShoreDeformAmplitude;
+
     void GenerateChunk(FChunkData& ChunkData);
     float GetHeight(int32 WorldX, int32 WorldY) const;
 
@@ -417,6 +447,14 @@ public:
         P.SeaDepthSlope = SeaDepthSlope; P.SeaMaxDepth = SeaMaxDepth;
         P.SeaFloorScale = SeaFloorScale; P.SeaFloorAmplitude = SeaFloorAmplitude;
         P.BeachWidth = BeachWidth;
+        P.VoronoiScale = VoronoiScale;
+        P.LakeProbability = LakeProbability;
+        P.LakeMaxDepth = LakeMaxDepth;
+        P.LakeDepthFalloff = LakeDepthFalloff;
+        P.LakeMinDiameter = LakeMinDiameter;
+        P.LakeMaxDiameter = LakeMaxDiameter;
+        P.ShoreDeformScale = ShoreDeformScale;
+        P.ShoreDeformAmplitude = ShoreDeformAmplitude;
         P.PerturbScale = GenDef::PerturbScale;
         return P;
     }
