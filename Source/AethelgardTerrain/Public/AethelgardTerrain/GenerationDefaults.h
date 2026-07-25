@@ -6,34 +6,34 @@
 
 namespace GenDef
 {
-    constexpr float MacroScale = 0.0001f;
+    constexpr float MacroScale = 0.0005f;
     constexpr float MacroAmplitude = 220.0f;
     constexpr int32 MacroOctaves = 2;
     constexpr float MacroPersistence = 0.5f;
     constexpr float MacroLacunarity = 4.0f;
 
     constexpr float BaseShapeScale = 0.001f;
-    constexpr float BaseShapeAmplitude = 15.0f;
+    constexpr float BaseShapeAmplitude = 50.0f;
     constexpr float BaseShapePersistence = 0.5f;
     constexpr float BaseShapeLacunarity = 2.0f;
 
     constexpr float MountainFollyScale = 0.002f;
-    constexpr float MountainFollyAmplitude = 350.0f;
-    constexpr float MountainFollyBias = 0.63f;
+    constexpr float MountainFollyAmplitude = 280.0f;
+    constexpr float MountainFollyBias = 0.55f;
 
     constexpr float BiomeSepScale = 0.04f;
     constexpr int32 BiomeSepOctaves = 2;
 
-    constexpr float TempScale = 0.0001f;
-    constexpr float HumidScale = 0.0005f;
+    constexpr float TempScale = 0.00015f;
+    constexpr float HumidScale = 0.0004f;
     constexpr float TempPerturbScale = 0.001f;
     constexpr float TempPerturbAmplitude = 0.15f;
     constexpr float HumidPerturbScale = 0.001f;
     constexpr float HumidPerturbAmplitude = 0.15f;
-    constexpr float GlacierThreshold = 0.25f;
+    constexpr float GlacierThreshold = 0.30f;
 
-    constexpr float MesoScale = 0.02f;
-    constexpr float MesoAmplitude = 8.0f;
+    constexpr float MesoScale = 0.01f;
+    constexpr float MesoAmplitude = 12.0f;
     constexpr int32 MesoOctaves = 2;
     constexpr float MesoPersistence = 0.5f;
     constexpr float MesoLacunarity = 2.0f;
@@ -48,13 +48,13 @@ namespace GenDef
 
     constexpr float SeaLevel = 80.0f;
     constexpr float MountainStart = 150.0f;
-    constexpr float MaxHeight = 220.0f;
+    constexpr float MaxHeight = 260.0f;
 
     constexpr float PlainsHillScale = 0.03f;
-    constexpr float PlainsHillAmplitude = 5.0f;
+    constexpr float PlainsHillAmplitude = 8.0f;
 
     constexpr float DesertDuneScale = 0.015f;
-    constexpr float DesertDuneAmplitude = 6.0f;
+    constexpr float DesertDuneAmplitude = 10.0f;
 
     constexpr float MountainDetailScale = 0.01f;
     constexpr float MountainDetailAmplitude = 12.0f;
@@ -63,7 +63,7 @@ namespace GenDef
     constexpr float MountainLiftAmplitude = 40.0f;
     constexpr float MountainRoughScale = 0.015f;
     constexpr float MountainRoughThreshold = 0.35f;
-    constexpr float MountainRoughAmplitude = 15.0f;
+    constexpr float MountainRoughAmplitude = 20.0f;
     constexpr float MountainRoughDetailScale = 0.008f;
 
     constexpr float MountainRockThreshold = 152.0f;
@@ -80,13 +80,19 @@ namespace GenDef
     constexpr float RiverDepth = 10.0f;
 
     constexpr int32 WaterFloorDepth = 3;
-    constexpr float SeaDepthSlope = 0.05f;
-    constexpr float SeaMaxDepth = 25.0f;
+    constexpr float SeaDepthSlope = 0.03f;
+    constexpr float SeaMaxDepth = 40.0f;
 
     constexpr float SeaFloorScale = 0.02f;
     constexpr float SeaFloorAmplitude = 5.0f;
 
     constexpr float BeachWidth = 15.0f;
+
+    constexpr float CoastAmplitude = 3.0f;
+    constexpr float SeaAttenuation = 3.0f;
+    constexpr float LandAttenuation = 10.0f;
+    constexpr float CoastalBlendSea = 10.0f;
+    constexpr float CoastalBlendLand = 7.0f;
 
     constexpr float IceAgeFactor = 0.1f;
 
@@ -107,18 +113,38 @@ namespace GenDef
 
     constexpr float ForestTempAffinity = 0.75f;
     constexpr float ForestHumidAffinity = 0.8f;
-    constexpr float ForestHeightAffinity = 0.5f;
+    constexpr float ForestHeightAffinity = 0.45f;
     constexpr float ForestAdjust = 1.0f;
 
     constexpr float DesertTempAffinity = 0.9f;
     constexpr float DesertHumidAffinity = 0.15f;
-    constexpr float DesertHeightAffinity = 0.45f;
-    constexpr float DesertAdjust = 1.2f;
+    constexpr float DesertHeightAffinity = 0.40f;
+    constexpr float DesertAdjust = 1.0f;
 
     constexpr float PlainsTempAffinity = 0.5f;
     constexpr float PlainsHumidAffinity = 0.5f;
-    constexpr float PlainsHeightAffinity = 0.5f;
-    constexpr float PlainsAdjust = 0.6f;
+    constexpr float PlainsHeightAffinity = 0.40f;
+    constexpr float PlainsAdjust = 0.8f;
 
     constexpr float PerturbScale = 0.01f;
+
+	constexpr float IceMtnTempAffinity = 0.2f;
+	constexpr float IceMtnHumidAffinity = 0.5f;
+	constexpr float IceMtnHeightAffinity = 0.65f;
+	constexpr float IceMtnAdjust = 1.1f;
+
+	constexpr float HumidMtnTempAffinity = 0.5f;
+	constexpr float HumidMtnHumidAffinity = 0.9f;
+	constexpr float HumidMtnHeightAffinity = 0.75f;
+	constexpr float HumidMtnAdjust = 1.0f;
+
+	constexpr float ClassicMtnTempAffinity = 0.5f;
+	constexpr float ClassicMtnHumidAffinity = 0.5f;
+	constexpr float ClassicMtnHeightAffinity = 0.65f;
+	constexpr float ClassicMtnAdjust = 1.0f;
+
+	constexpr float IceMtnPeakAmplitude = 55.0f;
+	constexpr float ClassicMtnLiftAmplitude = 30.0f;
+	constexpr float HumidMtnHillAmplitude = 10.0f;
+	constexpr float HumidMtnHillScale = 0.008f;
 }

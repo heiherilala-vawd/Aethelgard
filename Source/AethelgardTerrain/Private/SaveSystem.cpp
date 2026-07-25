@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "AethelgardTerrain/SaveSystem.h"
+#include "AethelgardTerrain/CoordinateUtils.h"
 #include "Kismet/GameplayStatics.h"
 
 void USaveSystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -105,8 +106,5 @@ bool USaveSystem::IsBlockModified(int32 WorldX, int32 WorldY, int32 WorldZ) cons
 
 FIntPoint USaveSystem::WorldToChunkCoord(int32 X, int32 Y) const
 {
-    return FIntPoint(
-        FMath::FloorToInt((float)X / CHUNK_SIZE),
-        FMath::FloorToInt((float)Y / CHUNK_SIZE)
-    );
+    return TerrainCoords::BlockToChunk(X, Y);
 }

@@ -7,6 +7,7 @@
 #include "AethelgardTerrain/VoxelWorld.h"
 #include "AethelgardTerrain/WorldGeneratorComponent.h"
 #include "AethelgardTerrain/ChunkManagerComponent.h"
+#include "AethelgardTerrain/CoordinateUtils.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
@@ -35,11 +36,14 @@ FString AAethelgardHUD::GetBiomeName(EBiomeType Biome)
 {
     switch (Biome)
     {
-    case EBiomeType::Plains:   return TEXT("Plaines");
-    case EBiomeType::Desert:   return TEXT("Desert");
-    case EBiomeType::Mountain: return TEXT("Montagne");
-    case EBiomeType::Forest:   return TEXT("Foret");
-    default:                   return TEXT("Mer");
+    case EBiomeType::Plains:           return TEXT("Plaines");
+    case EBiomeType::Desert:           return TEXT("Desert");
+    case EBiomeType::Forest:           return TEXT("Foret");
+    case EBiomeType::ColdPlace:        return TEXT("Endroit Froid");
+    case EBiomeType::IceMountain:      return TEXT("Mont. Glacee");
+    case EBiomeType::HumidMountain:    return TEXT("Mont. Humide");
+    case EBiomeType::ClassicMountain:  return TEXT("Montagne");
+    default:                           return TEXT("Mer");
     }
 }
 
@@ -74,13 +78,12 @@ void AAethelgardHUD::DrawDebugInfo()
     if (!VW) return;
 
     float BS = VW->BlockScale;
-
-    int32 BX = FMath::FloorToInt(Loc.X / BS);
-    int32 BY = FMath::FloorToInt(Loc.Y / BS);
+    FIntPoint BP = TerrainCoords::WorldToBlock(Loc, BS);
+    int32 BX = BP.X, BY = BP.Y;
     int32 BZ = FMath::FloorToInt(Loc.Z / BS);
 
-    int32 CX = (BX >= 0 ? BX : BX - CHUNK_SIZE + 1) / CHUNK_SIZE;
-    int32 CY = (BY >= 0 ? BY : BY - CHUNK_SIZE + 1) / CHUNK_SIZE;
+    FIntPoint ChunkP = TerrainCoords::BlockToChunk(BX, BY);
+    int32 CX = ChunkP.X, CY = ChunkP.Y;
 
     float Delta = GetWorld()->GetDeltaSeconds();
     float FPS = Delta > 0.0f ? 1.0f / Delta : 0.0f;
@@ -96,13 +99,17 @@ void AAethelgardHUD::DrawDebugInfo()
         UWorldGeneratorComponent* Gen = VW->GetWorldGenerator();
         if (Gen)
         {
-            EBiomeType Biome = UWorldGeneratorComponent::GetBiomeAt(BX, BY, Gen->CaptureParams());
-            CachedBiome = FString::Printf(TEXT("Biome :     %s"), *GetBiomeName(Biome));
+            FColumnResult CR = UWorldGeneratorComponent::ComputeRawColumnAt(BX, BY, Gen->CaptureParams());
+
+            CachedBiome = FString::Printf(TEXT("Biome :     %s"), *GetBiomeName(CR.Biome));
 
             EBlockId UnderFeet = VW->GetChunkManager()->GetBlock(BX, BY, BZ);
             CachedBlock = FString::Printf(TEXT("Bloc :      %s"), *GetBlockName(UnderFeet));
 
             CachedSeed = FString::Printf(TEXT("Seed :      %d"), Gen->Seed);
+
+            CachedTemperature = FString::Printf(TEXT("Temp :      %.2f"), CR.Temperature);
+            CachedHumidity = FString::Printf(TEXT("Humid :     %.2f"), CR.Humidity);
         }
     }
 
@@ -123,6 +130,8 @@ void AAethelgardHUD::DrawDebugInfo()
     if (Gen)
     {
         DrawLine(X, Y, CachedBiome, ValueColor);
+        DrawLine(X, Y, CachedTemperature, LabelColor);
+        DrawLine(X, Y, CachedHumidity, LabelColor);
         DrawLine(X, Y, CachedBlock, LabelColor);
         Y += 4.0f;
         DrawLine(X, Y, CachedSeed, LabelColor);

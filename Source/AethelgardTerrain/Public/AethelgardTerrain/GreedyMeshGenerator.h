@@ -23,11 +23,13 @@ private:
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
         int32 Axis, int32 Sign, int32 LayerCount,
         TMap<EBlockId, FMeshSectionData>& Out, float Scale,
-        int32 MinZ, int32 MaxZ, int32 EstimatedQuads);
+        int32 MinZ, int32 MaxZ, int32 EstimatedQuads,
+        const FIntPoint& ChunkPos);
 
     void AddQuad(FMeshSectionData& Out, EBlockId BlockType,
         int32 Axis, int32 Sign, int32 Layer,
-        int32 U, int32 V, int32 W, int32 H, float Scale);
+        int32 U, int32 V, int32 W, int32 H, float Scale,
+        const FIntPoint& ChunkPos);
 
     EBlockId GetBlock(const FChunkData& CD,
         const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,

@@ -19,7 +19,7 @@ struct AETHELGARDTERRAIN_API FChunkData
     FIntPoint Position;
 
     UPROPERTY()
-    TArray<uint8> HeightData;
+    TArray<uint16> HeightData;
 
     UPROPERTY()
     TArray<uint8> TopBlocks;
@@ -28,7 +28,7 @@ struct AETHELGARDTERRAIN_API FChunkData
     TMap<int32, uint8> Overrides;
 
     UPROPERTY()
-    TArray<uint8> WaterLevel;
+    TArray<uint16> WaterLevel;
 
     bool bIsGenerated = false;
     bool bHasOverrides = false;
@@ -63,7 +63,7 @@ struct AETHELGARDTERRAIN_API FChunkData
                 return static_cast<EBlockId>(*Ov);
         }
 
-        uint8 H = HeightData[ColIdx];
+        uint16 H = HeightData[ColIdx];
 
         if (Z >= H)
         {
@@ -72,7 +72,7 @@ struct AETHELGARDTERRAIN_API FChunkData
             return EBlockId::Air;
         }
 
-        int32 LayerIdx = H - 1 - Z;
+        int32 LayerIdx = (int32)H - 1 - Z;
         if (LayerIdx < TOP_LAYERS)
             return static_cast<EBlockId>(TopBlocks[ColIdx * TOP_LAYERS + LayerIdx]);
 
@@ -96,7 +96,7 @@ struct AETHELGARDTERRAIN_API FChunkData
         }
     }
 
-    void SetColumn(int32 X, int32 Y, uint8 Height, const uint8 Top[TOP_LAYERS])
+    void SetColumn(int32 X, int32 Y, uint16 Height, const uint8 Top[TOP_LAYERS])
     {
         int32 ColIdx = GetColumnIndex(X, Y);
         HeightData[ColIdx] = Height;
@@ -104,12 +104,12 @@ struct AETHELGARDTERRAIN_API FChunkData
             TopBlocks[ColIdx * TOP_LAYERS + i] = Top[i];
     }
 
-    void SetWaterColumn(int32 X, int32 Y, uint8 InWaterLevel)
+    void SetWaterColumn(int32 X, int32 Y, uint16 InWaterLevel)
     {
         WaterLevel[GetColumnIndex(X, Y)] = InWaterLevel;
     }
 
-    uint8 GetWaterColumn(int32 X, int32 Y) const
+    uint16 GetWaterColumn(int32 X, int32 Y) const
     {
         return WaterLevel[GetColumnIndex(X, Y)];
     }

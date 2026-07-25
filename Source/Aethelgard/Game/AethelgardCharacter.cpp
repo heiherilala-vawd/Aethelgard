@@ -26,7 +26,7 @@ AAethelgardCharacter::AAethelgardCharacter()
     BuildComponent = CreateDefaultSubobject<UBuildComponent>(TEXT("BuildComponent"));
     Inventory = CreateDefaultSubobject<UInventoryComponent>(TEXT("Inventory"));
 
-    GetCharacterMovement()->MaxWalkSpeed = 800.0f;
+    GetCharacterMovement()->MaxWalkSpeed = 4000.0f;
     GetCharacterMovement()->JumpZVelocity = 420.0f;
     GetCharacterMovement()->AirControl = 0.2f;
     GetCharacterMovement()->GravityScale = 1.0f;

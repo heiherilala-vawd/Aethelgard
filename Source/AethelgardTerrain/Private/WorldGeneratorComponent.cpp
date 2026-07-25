@@ -14,12 +14,14 @@ static float ScoreBiome(float T, float H, float WorldHeight, const FGeneratorPar
 	return FMath::Exp(-Dist * Dist * P.AffinitySharpness) * Adjust;
 }
 
-static const FBiomeParams BiomeParams[5] = {
-	{ EBlockId::Grass, EBlockId::Dirt, 3, 0.0f, 0.0f, GenDef::PlainsHillAmplitude, GenDef::PlainsHillScale, true, false },
-	{ EBlockId::Sand,  EBlockId::Sand, 5, 0.0f, 0.0f, GenDef::DesertDuneAmplitude, GenDef::DesertDuneScale, false, true },
-	{ EBlockId::Grass, EBlockId::Stone, 2, GenDef::MountainRockThreshold, GenDef::MountainSnowThreshold, GenDef::MountainDetailAmplitude, GenDef::MountainDetailScale, false, false },
-	{ EBlockId::Grass, EBlockId::Dirt, 4, 0.0f, 0.0f, 0.0f, 0.0f, false, false },
-	{ EBlockId::Snow,  EBlockId::Dirt, 3, 0.0f, 0.0f, 0.0f, 0.0f, false, false },
+static const FBiomeParams BiomeParams[7] = {
+	{ EBlockId::Grass,  EBlockId::Dirt,  3, 0.0f, 0.0f, GenDef::PlainsHillAmplitude, GenDef::PlainsHillScale, true, false, false, 0.0f },
+	{ EBlockId::Sand,   EBlockId::Sand,  5, 0.0f, 0.0f, GenDef::DesertDuneAmplitude, GenDef::DesertDuneScale, false, true, false, 0.0f },
+	{ EBlockId::Grass,  EBlockId::Dirt,  4, 0.0f, 0.0f, 0.0f, 0.0f, false, false, false, 0.0f },
+	{ EBlockId::Snow,   EBlockId::Dirt,  3, 0.0f, 0.0f, 0.0f, 0.0f, false, false, false, 0.0f },
+	{ EBlockId::Snow,   EBlockId::Stone, 2, GenDef::MountainRockThreshold, GenDef::MountainSnowThreshold, 0.0f, 0.0f, false, false, true, GenDef::IceMtnPeakAmplitude },
+	{ EBlockId::LushGrass, EBlockId::Dirt, 4, 0.0f, 0.0f, GenDef::HumidMtnHillAmplitude, GenDef::HumidMtnHillScale, false, false, true, 0.0f },
+	{ EBlockId::Grass,  EBlockId::Stone, 3, GenDef::MountainRockThreshold, GenDef::MountainSnowThreshold, 0.0f, 0.0f, false, false, true, 0.0f },
 };
 
 static void ComputeClimate(int32 WX, int32 WY, const FGeneratorParams& P, float& OutTemp, float& OutHumid)
@@ -51,33 +53,57 @@ float UWorldGeneratorComponent::ComputeBaseHeight(int32 WX, int32 WY, const FGen
 		P.Seed + (int32)ENoiseLayer::NBaseShape * 7919,
 		P.BaseShapeScale, 1, P.BaseShapePersistence, P.BaseShapeLacunarity,
 		WX, WY));
-	return P.GlobalElevation + Macro * P.MacroAmplitude + BaseShape * P.BaseShapeAmplitude;
+	float Noise = Macro * P.MacroAmplitude + BaseShape * P.BaseShapeAmplitude;
+	float Raw = P.GlobalElevation + Noise;
+	float d = Raw - P.SeaLevel;
+
+	float Factor;
+	if (d < -P.CoastalBlendSea)
+		Factor = 1.0f / P.SeaAttenuation;
+	else if (d < 0.0f)
+		Factor = FMath::Lerp(1.0f / P.SeaAttenuation, P.CoastAmplitude, (d + P.CoastalBlendSea) / P.CoastalBlendSea);
+	else if (d <= P.CoastalBlendLand)
+		Factor = FMath::Lerp(P.CoastAmplitude, 1.0f / P.LandAttenuation, d / P.CoastalBlendLand);
+	else
+		Factor = 1.0f / P.LandAttenuation;
+
+	return P.GlobalElevation + Noise * Factor;
 }
 
 EBiomeType UWorldGeneratorComponent::SelectBiome(int32 WX, int32 WY, const FGeneratorParams& P, float& OutGradient)
 {
 	float Height = FMath::Clamp(ComputeBaseHeight(WX, WY, P), 1.0f, P.MaxHeight);
 	if (Height < P.SeaLevel) { OutGradient = 0.0f; return EBiomeType::Plains; }
-	if (Height >= P.MountainStart) { OutGradient = FMath::Clamp((Height - P.MountainStart) / P.BiomeBlendDistance, 0.0f, 1.0f); return EBiomeType::Mountain; }
 
 	float Temp, Humid;
 	ComputeClimate(WX, WY, P, Temp, Humid);
 
 	float EffGlacier = FMath::Lerp(P.GlacierThreshold, 1.0f, P.IceAgeFactor);
 	EBiomeType Biome;
-	if (Temp < EffGlacier) Biome = EBiomeType::Glacier;
+	if (Temp < EffGlacier) Biome = EBiomeType::ColdPlace;
 	else
 	{
 		float FS = ScoreBiome(Temp, Humid, Height, P, P.ForestTempAffinity, P.ForestHumidAffinity, P.ForestHeightAffinity, P.ForestAdjust);
 		float DS = ScoreBiome(Temp, Humid, Height, P, P.DesertTempAffinity, P.DesertHumidAffinity, P.DesertHeightAffinity, P.DesertAdjust);
 		float PS = ScoreBiome(Temp, Humid, Height, P, P.PlainsTempAffinity, P.PlainsHumidAffinity, P.PlainsHeightAffinity, P.PlainsAdjust);
-		if (FS >= DS && FS >= PS) Biome = EBiomeType::Forest;
-		else if (DS >= PS) Biome = EBiomeType::Desert;
+		float IMS = ScoreBiome(Temp, Humid, Height, P, P.IceMtnTempAffinity, P.IceMtnHumidAffinity, P.IceMtnHeightAffinity, P.IceMtnAdjust);
+		float HMS = ScoreBiome(Temp, Humid, Height, P, P.HumidMtnTempAffinity, P.HumidMtnHumidAffinity, P.HumidMtnHeightAffinity, P.HumidMtnAdjust);
+		float CMS = ScoreBiome(Temp, Humid, Height, P, P.ClassicMtnTempAffinity, P.ClassicMtnHumidAffinity, P.ClassicMtnHeightAffinity, P.ClassicMtnAdjust);
+
+		float Best = FMath::Max3(FS, DS, PS);
+		Best = FMath::Max3(Best, IMS, HMS);
+		Best = FMath::Max(Best, CMS);
+
+		if (Best == IMS) Biome = EBiomeType::IceMountain;
+		else if (Best == HMS) Biome = EBiomeType::HumidMountain;
+		else if (Best == CMS) Biome = EBiomeType::ClassicMountain;
+		else if (Best == FS) Biome = EBiomeType::Forest;
+		else if (Best == DS) Biome = EBiomeType::Desert;
 		else Biome = EBiomeType::Plains;
 	}
 
-	float dSea = Height - P.SeaLevel, dMtn = P.MountainStart - Height, dGlac = FMath::Abs(Temp - EffGlacier);
-	OutGradient = FMath::Clamp(FMath::Min3(dSea, dMtn, dGlac) / P.BiomeBlendDistance, 0.0f, 1.0f);
+	float dSea = Height - P.SeaLevel, dCold = FMath::Abs(Temp - EffGlacier);
+	OutGradient = FMath::Clamp(FMath::Min(dSea, dCold) / P.BiomeBlendDistance, 0.0f, 1.0f);
 	return Biome;
 }
 
@@ -109,7 +135,6 @@ FColumnResult UWorldGeneratorComponent::ComputeRawColumnAt(int32 WX, int32 WY, c
 	}
 
 	bool bIsSea = (Height < P.SeaLevel);
-	bool bIsMountain = (Height >= P.MountainStart);
 
 	ComputeClimate(WX, WY, P, Result.Temperature, Result.Humidity);
 
@@ -126,66 +151,117 @@ FColumnResult UWorldGeneratorComponent::ComputeRawColumnAt(int32 WX, int32 WY, c
 		Result.Biome = EBiomeType::Plains;
 		Result.bIsOcean = true;
 	}
-
-	if (bIsMountain)
-	{
-		Result.Biome = EBiomeType::Mountain;
-		float MtnGrad = FMath::Clamp((Height - P.MountainStart) / P.BiomeBlendDistance, 0.0f, 1.0f);
-		Height += TerrainNoise::Sample2D(
-			S + (int32)ENoiseLayer::NMountainDetail * 7919,
-			P.MountainDetailScale, 2, 0.5f, 2.0f, WX, WY) * P.MountainDetailAmplitude * MtnGrad;
-
-		float MtnFactor = FMath::Clamp((Height - P.MountainStart) / (P.MaxHeight - P.MountainStart), 0.0f, 1.0f);
-		float Lift = FMath::Sin(MtnFactor * PI * 0.5f);
-		Height += TerrainNoise::Sample2D(
-			S + (int32)ENoiseLayer::NMountainDetail * 7919 + 31337,
-			P.MountainLiftScale, 1, 0.5f, 2.0f, WX, WY) * P.MountainLiftAmplitude * Lift;
-
-		float RoughNoise = TerrainNoise::Sample2D(
-			S + (int32)ENoiseLayer::NMountainRough * 7919,
-			P.MountainRoughScale, 1, 0.5f, 2.0f, WX, WY);
-		if (RoughNoise > P.MountainRoughThreshold)
-		{
-			float RoughMask = (RoughNoise - P.MountainRoughThreshold) / (1.0f - P.MountainRoughThreshold);
-			float Detail1 = TerrainNoise::Sample2D(
-				S + (int32)ENoiseLayer::NMountainRough * 7919 + 7901,
-				P.MountainRoughDetailScale, 1, 0.5f, 2.0f, WX, WY);
-			float Detail2 = TerrainNoise::Sample2D(
-				S + (int32)ENoiseLayer::NMountainRough * 7919 + 7907,
-				P.MountainRoughDetailScale * 2.0f, 1, 0.5f, 2.0f, WX, WY);
-			Height += (Detail1 * 0.6f + Detail2 * 0.4f) * P.MountainRoughAmplitude * RoughMask * MtnFactor;
-		}
-
-		Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
-	}
-
-	if (!bIsSea && !bIsMountain)
+	else
 	{
 		float EffGlacier = FMath::Lerp(P.GlacierThreshold, 1.0f, P.IceAgeFactor);
 		EBiomeType Biome;
-		if (Result.Temperature < EffGlacier) Biome = EBiomeType::Glacier;
+		if (Result.Temperature < EffGlacier) Biome = EBiomeType::ColdPlace;
 		else
 		{
 			float FS = ScoreBiome(Result.Temperature, Result.Humidity, Height, P, P.ForestTempAffinity, P.ForestHumidAffinity, P.ForestHeightAffinity, P.ForestAdjust);
 			float DS = ScoreBiome(Result.Temperature, Result.Humidity, Height, P, P.DesertTempAffinity, P.DesertHumidAffinity, P.DesertHeightAffinity, P.DesertAdjust);
 			float PS = ScoreBiome(Result.Temperature, Result.Humidity, Height, P, P.PlainsTempAffinity, P.PlainsHumidAffinity, P.PlainsHeightAffinity, P.PlainsAdjust);
-			if (FS >= DS && FS >= PS) Biome = EBiomeType::Forest;
-			else if (DS >= PS) Biome = EBiomeType::Desert;
+			float IMS = ScoreBiome(Result.Temperature, Result.Humidity, Height, P, P.IceMtnTempAffinity, P.IceMtnHumidAffinity, P.IceMtnHeightAffinity, P.IceMtnAdjust);
+			float HMS = ScoreBiome(Result.Temperature, Result.Humidity, Height, P, P.HumidMtnTempAffinity, P.HumidMtnHumidAffinity, P.HumidMtnHeightAffinity, P.HumidMtnAdjust);
+			float CMS = ScoreBiome(Result.Temperature, Result.Humidity, Height, P, P.ClassicMtnTempAffinity, P.ClassicMtnHumidAffinity, P.ClassicMtnHeightAffinity, P.ClassicMtnAdjust);
+
+			float Best = FMath::Max3(FS, DS, PS);
+			Best = FMath::Max3(Best, IMS, HMS);
+			Best = FMath::Max(Best, CMS);
+
+			if (Best == IMS) Biome = EBiomeType::IceMountain;
+			else if (Best == HMS) Biome = EBiomeType::HumidMountain;
+			else if (Best == CMS) Biome = EBiomeType::ClassicMountain;
+			else if (Best == FS) Biome = EBiomeType::Forest;
+			else if (Best == DS) Biome = EBiomeType::Desert;
 			else Biome = EBiomeType::Plains;
 		}
 		Result.Biome = Biome;
 
-		float dSea = Height - P.SeaLevel, dMtn = P.MountainStart - Height, dGlac = FMath::Abs(Result.Temperature - EffGlacier);
-		float Gradient = FMath::Clamp(FMath::Min3(dSea, dMtn, dGlac) / P.BiomeBlendDistance, 0.0f, 1.0f);
+		float dSea = Height - P.SeaLevel, dCold = FMath::Abs(Result.Temperature - EffGlacier);
+		float Gradient = FMath::Clamp(FMath::Min(dSea, dCold) / P.BiomeBlendDistance, 0.0f, 1.0f);
 
-		if (Biome == EBiomeType::Plains)
+		if (Biome == EBiomeType::IceMountain)
+		{
+			float MtnGrad = FMath::Clamp((Height - P.MountainStart) / P.BiomeBlendDistance, 0.0f, 1.0f);
+			Height += TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainDetail * 7919,
+				P.MountainDetailScale, 2, 0.5f, 2.0f, WX, WY) * P.MountainDetailAmplitude * MtnGrad;
+
+			float MtnFactor = FMath::Clamp((Height - P.MountainStart) / (P.MaxHeight - P.MountainStart), 0.0f, 1.0f);
+			float Lift = FMath::Sin(MtnFactor * PI * 0.5f);
+			Height += TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainDetail * 7919 + 31337,
+				P.MountainLiftScale, 1, 0.5f, 2.0f, WX, WY) * P.IceMtnPeakAmplitude * Lift;
+
+			float RoughNoise = TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainRough * 7919,
+				P.MountainRoughScale, 1, 0.5f, 2.0f, WX, WY);
+			if (RoughNoise > P.MountainRoughThreshold)
+			{
+				float RoughMask = (RoughNoise - P.MountainRoughThreshold) / (1.0f - P.MountainRoughThreshold);
+				float Detail1 = TerrainNoise::Sample2D(
+					S + (int32)ENoiseLayer::NMountainRough * 7919 + 7901,
+					P.MountainRoughDetailScale, 1, 0.5f, 2.0f, WX, WY);
+				float Detail2 = TerrainNoise::Sample2D(
+					S + (int32)ENoiseLayer::NMountainRough * 7919 + 7907,
+					P.MountainRoughDetailScale * 2.0f, 1, 0.5f, 2.0f, WX, WY);
+				Height += (Detail1 * 0.6f + Detail2 * 0.4f) * P.MountainRoughAmplitude * RoughMask * MtnFactor;
+			}
+		}
+		else if (Biome == EBiomeType::ClassicMountain)
+		{
+			float MtnGrad = FMath::Clamp((Height - P.MountainStart) / P.BiomeBlendDistance, 0.0f, 1.0f);
+			Height += TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainDetail * 7919,
+				P.MountainDetailScale, 2, 0.5f, 2.0f, WX, WY) * P.MountainDetailAmplitude * MtnGrad;
+
+			float MtnFactor = FMath::Clamp((Height - P.MountainStart) / (P.MaxHeight - P.MountainStart), 0.0f, 1.0f);
+			float Lift = FMath::Sin(MtnFactor * PI * 0.5f);
+			Height += TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainDetail * 7919 + 31337,
+				P.MountainLiftScale, 1, 0.5f, 2.0f, WX, WY) * P.ClassicMtnLiftAmplitude * Lift;
+
+			float RoughNoise = TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainRough * 7919,
+				P.MountainRoughScale, 1, 0.5f, 2.0f, WX, WY);
+			if (RoughNoise > P.MountainRoughThreshold)
+			{
+				float RoughMask = (RoughNoise - P.MountainRoughThreshold) / (1.0f - P.MountainRoughThreshold);
+				float Detail1 = TerrainNoise::Sample2D(
+					S + (int32)ENoiseLayer::NMountainRough * 7919 + 7901,
+					P.MountainRoughDetailScale, 1, 0.5f, 2.0f, WX, WY);
+				float Detail2 = TerrainNoise::Sample2D(
+					S + (int32)ENoiseLayer::NMountainRough * 7919 + 7907,
+					P.MountainRoughDetailScale * 2.0f, 1, 0.5f, 2.0f, WX, WY);
+				Height += (Detail1 * 0.6f + Detail2 * 0.4f) * P.MountainRoughAmplitude * RoughMask * MtnFactor;
+			}
+		}
+		else if (Biome == EBiomeType::HumidMountain)
+		{
+			float MtnGrad = FMath::Clamp((Height - P.MountainStart) / P.BiomeBlendDistance, 0.0f, 1.0f);
+			Height += TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NMountainDetail * 7919,
+				P.MountainDetailScale, 2, 0.5f, 2.0f, WX, WY) * P.MountainDetailAmplitude * 0.5f * MtnGrad;
+
+			Height += FMath::Abs(TerrainNoise::Sample2D(
+				S + (int32)ENoiseLayer::NPlainsHill * 7919,
+				P.HumidMtnHillScale, 1, 0.5f, 2.0f, WX, WY)) * P.HumidMtnHillAmplitude * Gradient;
+		}
+		else if (Biome == EBiomeType::Plains)
+		{
 			Height += FMath::Abs(TerrainNoise::Sample2D(
 				S + (int32)ENoiseLayer::NPlainsHill * 7919,
 				P.PlainsHillScale, 1, 0.5f, 2.0f, WX, WY)) * P.PlainsHillAmplitude * Gradient;
+		}
 		else if (Biome == EBiomeType::Desert)
+		{
 			Height += FMath::Abs(TerrainNoise::Sample2D(
 				S + (int32)ENoiseLayer::NDesertDune * 7919,
 				P.DesertDuneScale, 1, 0.5f, 2.0f, WX, WY)) * P.DesertDuneAmplitude * Gradient;
+		}
+
+		Height = FMath::Clamp(Height, 1.0f, P.MaxHeight);
 	}
 
 	Height += TerrainNoise::Sample2D(
@@ -246,7 +322,16 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
 			EBlockId SubsurfaceBlock = BP.SubsurfaceBlock;
 			int32 SubsurfaceDepth = BP.SubsurfaceDepth;
 
-			if (R.Biome == EBiomeType::Mountain)
+			if (R.Biome == EBiomeType::IceMountain)
+			{
+				if (Height > BP.SnowHeight) SurfaceBlock = EBlockId::Snow;
+				else if (Height > BP.RockHeight) SurfaceBlock = EBlockId::Stone;
+			}
+			else if (R.Biome == EBiomeType::HumidMountain)
+			{
+				SurfaceBlock = EBlockId::LushGrass;
+			}
+			else if (R.Biome == EBiomeType::ClassicMountain)
 			{
 				if (Height > BP.SnowHeight) SurfaceBlock = EBlockId::Snow;
 				else if (Height > BP.RockHeight) SurfaceBlock = EBlockId::Stone;
@@ -269,7 +354,7 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
 			for (int32 Layer = 0; Layer < TOP_LAYERS; Layer++)
 			{
 				int32 Z = (int32)EH - 1 - Layer;
-				if (Z < 0) Top[Layer] = (uint8)EBlockId::Stone;
+				if (Layer == 0) Top[Layer] = (uint8)SurfaceBlock;
 				else if (Z < StoneBoundary) Top[Layer] = (uint8)EBlockId::Stone;
 				else if (Z < SubBoundary) Top[Layer] = (uint8)SubsurfaceBlock;
 				else Top[Layer] = (uint8)SurfaceBlock;
@@ -278,7 +363,10 @@ void UWorldGeneratorComponent::GenerateChunkData(FChunkData& ChunkData, const FG
 			if (R.WaterSurface > 0)
 			{
 				int32 FloorLayers = FMath::Min(P.WaterFloorDepth, TOP_LAYERS);
-				for (int32 Layer = 0; Layer < FloorLayers; Layer++) Top[Layer] = (uint8)EBlockId::Sand;
+				uint8 FloorBlock = (R.Biome == EBiomeType::ColdPlace)
+					? (uint8)EBlockId::Ice
+					: (uint8)EBlockId::Sand;
+				for (int32 Layer = 0; Layer < FloorLayers; Layer++) Top[Layer] = FloorBlock;
 			}
 
 			if (bIsBeach[X][Y]) Top[0] = (uint8)EBlockId::Sand;

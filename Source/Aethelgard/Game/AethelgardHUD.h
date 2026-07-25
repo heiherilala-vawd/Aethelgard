@@ -36,6 +36,8 @@ private:
     FString CachedSeed;
     FString CachedFPS;
     FString CachedChunks;
+    FString CachedTemperature;
+    FString CachedHumidity;
     int32 DebugFrameCounter = 0;
     TWeakObjectPtr<AVoxelWorld> CachedVoxelWorld;
 };

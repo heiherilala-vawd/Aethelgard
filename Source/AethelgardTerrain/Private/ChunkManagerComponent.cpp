@@ -239,11 +239,20 @@ void UChunkManagerComponent::SliceRegionIntoChunks(const FIntPoint& RegionCoord)
 				EBlockId SubsurfaceBlock = BP.SubsurfaceBlock;
 				int32 SubsurfaceDepth = BP.SubsurfaceDepth;
 
-				if (Biome == EBiomeType::Mountain)
+				if (Biome == EBiomeType::IceMountain)
 				{
 					if (Height > BP.SnowHeight) SurfaceBlock = EBlockId::Snow;
 					else if (Height > BP.RockHeight) SurfaceBlock = EBlockId::Stone;
 				}
+			else if (Biome == EBiomeType::HumidMountain)
+			{
+				SurfaceBlock = EBlockId::LushGrass;
+			}
+			else if (Biome == EBiomeType::ClassicMountain)
+			{
+				if (Height > BP.SnowHeight) SurfaceBlock = EBlockId::Snow;
+				else if (Height > BP.RockHeight) SurfaceBlock = EBlockId::Stone;
+			}
 
 				int32 S = Generator ? Generator->Seed : 0;
 				float N1 = TerrainNoise::Sample2D(
@@ -261,7 +270,7 @@ void UChunkManagerComponent::SliceRegionIntoChunks(const FIntPoint& RegionCoord)
 				for (int32 L = 0; L < TOP_LAYERS; L++)
 				{
 					int32 Z = (int32)EH - 1 - L;
-					if (Z < 0) Top[L] = (uint8)EBlockId::Stone;
+					if (L == 0) Top[L] = (uint8)SurfaceBlock;
 					else if (Z < StoneBoundary) Top[L] = (uint8)EBlockId::Stone;
 					else if (Z < SubBoundary) Top[L] = (uint8)SubsurfaceBlock;
 					else Top[L] = (uint8)SurfaceBlock;
@@ -270,7 +279,10 @@ void UChunkManagerComponent::SliceRegionIntoChunks(const FIntPoint& RegionCoord)
 				if (WS > 0)
 				{
 					int32 FloorLayers = FMath::Min(GenDef::WaterFloorDepth, TOP_LAYERS);
-					for (int32 L = 0; L < FloorLayers; L++) Top[L] = (uint8)EBlockId::Sand;
+					uint8 FloorBlock = (Biome == EBiomeType::ColdPlace)
+						? (uint8)EBlockId::Ice
+						: (uint8)EBlockId::Sand;
+					for (int32 L = 0; L < FloorLayers; L++) Top[L] = FloorBlock;
 				}
 
 				if (WS == 0 && PX >= 0 && PX < CorePX && PY >= 0 && PY < CorePX)

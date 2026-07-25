@@ -11,12 +11,14 @@
 UENUM()
 enum class EBiomeType : uint8
 {
-    Plains = 0,
-    Desert,
-    Mountain,
-    Forest,
-    Glacier,
-    MAX UMETA(Hidden)
+	Plains = 0,
+	Desert,
+	Forest,
+	ColdPlace,
+	IceMountain,
+	HumidMountain,
+	ClassicMountain,
+	MAX UMETA(Hidden)
 };
 
 enum class ENoiseLayer : int32
@@ -40,9 +42,9 @@ enum class ENoiseLayer : int32
     NRiver,
     NVoronoi,
     NShoreDeform,
-    NPerturb1,
-    NPerturb2,
-    NMAX UMETA(Hidden)
+	NPerturb1,
+	NPerturb2,
+	NMAX UMETA(Hidden)
 };
 
 USTRUCT()
@@ -57,8 +59,10 @@ struct AETHELGARDTERRAIN_API FBiomeParams
     float SnowHeight = 0.0f;
     float HillAmp = 0.0f;
     float HillScale = 0.0f;
-    bool bHasHillRelief = false;
-    bool bHasDuneRelief = false;
+	bool bHasHillRelief = false;
+	bool bHasDuneRelief = false;
+	bool bIsMountain = false;
+	float PeakAmplitude = 0.0f;
 };
 
 USTRUCT()
@@ -113,10 +117,30 @@ struct AETHELGARDTERRAIN_API FGeneratorParams
 
     float PlainsTempAffinity = GenDef::PlainsTempAffinity;
     float PlainsHumidAffinity = GenDef::PlainsHumidAffinity;
-    float PlainsHeightAffinity = GenDef::PlainsHeightAffinity;
-    float PlainsAdjust = GenDef::PlainsAdjust;
+	float PlainsHeightAffinity = GenDef::PlainsHeightAffinity;
+	float PlainsAdjust = GenDef::PlainsAdjust;
 
-    float MesoScale = GenDef::MesoScale;
+	float IceMtnTempAffinity = GenDef::IceMtnTempAffinity;
+	float IceMtnHumidAffinity = GenDef::IceMtnHumidAffinity;
+	float IceMtnHeightAffinity = GenDef::IceMtnHeightAffinity;
+	float IceMtnAdjust = GenDef::IceMtnAdjust;
+
+	float HumidMtnTempAffinity = GenDef::HumidMtnTempAffinity;
+	float HumidMtnHumidAffinity = GenDef::HumidMtnHumidAffinity;
+	float HumidMtnHeightAffinity = GenDef::HumidMtnHeightAffinity;
+	float HumidMtnAdjust = GenDef::HumidMtnAdjust;
+
+	float ClassicMtnTempAffinity = GenDef::ClassicMtnTempAffinity;
+	float ClassicMtnHumidAffinity = GenDef::ClassicMtnHumidAffinity;
+	float ClassicMtnHeightAffinity = GenDef::ClassicMtnHeightAffinity;
+	float ClassicMtnAdjust = GenDef::ClassicMtnAdjust;
+
+	float IceMtnPeakAmplitude = GenDef::IceMtnPeakAmplitude;
+	float ClassicMtnLiftAmplitude = GenDef::ClassicMtnLiftAmplitude;
+	float HumidMtnHillAmplitude = GenDef::HumidMtnHillAmplitude;
+	float HumidMtnHillScale = GenDef::HumidMtnHillScale;
+
+	float MesoScale = GenDef::MesoScale;
     float MesoAmplitude = GenDef::MesoAmplitude;
     int32 MesoOctaves = GenDef::MesoOctaves;
     float MesoPersistence = GenDef::MesoPersistence;
@@ -171,6 +195,12 @@ struct AETHELGARDTERRAIN_API FGeneratorParams
     float SeaFloorAmplitude = GenDef::SeaFloorAmplitude;
 
     float BeachWidth = GenDef::BeachWidth;
+
+    float CoastAmplitude = GenDef::CoastAmplitude;
+    float SeaAttenuation = GenDef::SeaAttenuation;
+    float LandAttenuation = GenDef::LandAttenuation;
+    float CoastalBlendSea = GenDef::CoastalBlendSea;
+    float CoastalBlendLand = GenDef::CoastalBlendLand;
 
     float VoronoiScale = GenDef::VoronoiScale;
     float LakeProbability = GenDef::LakeProbability;
@@ -286,10 +316,46 @@ public:
     float PlainsHumidAffinity = GenDef::PlainsHumidAffinity;
     UPROPERTY(EditAnywhere, Category = "Biome|Plains")
     float PlainsHeightAffinity = GenDef::PlainsHeightAffinity;
-    UPROPERTY(EditAnywhere, Category = "Biome|Plains")
-    float PlainsAdjust = GenDef::PlainsAdjust;
+	UPROPERTY(EditAnywhere, Category = "Biome|Plains")
+	float PlainsAdjust = GenDef::PlainsAdjust;
 
-    UPROPERTY(EditAnywhere, Category = "Generation|Meso")
+	UPROPERTY(EditAnywhere, Category = "Biome|IceMountain")
+	float IceMtnTempAffinity = GenDef::IceMtnTempAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|IceMountain")
+	float IceMtnHumidAffinity = GenDef::IceMtnHumidAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|IceMountain")
+	float IceMtnHeightAffinity = GenDef::IceMtnHeightAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|IceMountain")
+	float IceMtnAdjust = GenDef::IceMtnAdjust;
+
+	UPROPERTY(EditAnywhere, Category = "Biome|HumidMountain")
+	float HumidMtnTempAffinity = GenDef::HumidMtnTempAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|HumidMountain")
+	float HumidMtnHumidAffinity = GenDef::HumidMtnHumidAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|HumidMountain")
+	float HumidMtnHeightAffinity = GenDef::HumidMtnHeightAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|HumidMountain")
+	float HumidMtnAdjust = GenDef::HumidMtnAdjust;
+
+	UPROPERTY(EditAnywhere, Category = "Biome|ClassicMountain")
+	float ClassicMtnTempAffinity = GenDef::ClassicMtnTempAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|ClassicMountain")
+	float ClassicMtnHumidAffinity = GenDef::ClassicMtnHumidAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|ClassicMountain")
+	float ClassicMtnHeightAffinity = GenDef::ClassicMtnHeightAffinity;
+	UPROPERTY(EditAnywhere, Category = "Biome|ClassicMountain")
+	float ClassicMtnAdjust = GenDef::ClassicMtnAdjust;
+
+	UPROPERTY(EditAnywhere, Category = "Relief|IceMountain")
+	float IceMtnPeakAmplitude = GenDef::IceMtnPeakAmplitude;
+	UPROPERTY(EditAnywhere, Category = "Relief|ClassicMountain")
+	float ClassicMtnLiftAmplitude = GenDef::ClassicMtnLiftAmplitude;
+	UPROPERTY(EditAnywhere, Category = "Relief|HumidMountain")
+	float HumidMtnHillAmplitude = GenDef::HumidMtnHillAmplitude;
+	UPROPERTY(EditAnywhere, Category = "Relief|HumidMountain")
+	float HumidMtnHillScale = GenDef::HumidMtnHillScale;
+
+	UPROPERTY(EditAnywhere, Category = "Generation|Meso")
     float MesoScale = GenDef::MesoScale;
     UPROPERTY(EditAnywhere, Category = "Generation|Meso")
     float MesoAmplitude = GenDef::MesoAmplitude;
@@ -428,7 +494,13 @@ public:
         P.ForestTempAffinity = ForestTempAffinity; P.ForestHumidAffinity = ForestHumidAffinity; P.ForestHeightAffinity = ForestHeightAffinity; P.ForestAdjust = ForestAdjust;
         P.DesertTempAffinity = DesertTempAffinity; P.DesertHumidAffinity = DesertHumidAffinity; P.DesertHeightAffinity = DesertHeightAffinity; P.DesertAdjust = DesertAdjust;
         P.PlainsTempAffinity = PlainsTempAffinity; P.PlainsHumidAffinity = PlainsHumidAffinity; P.PlainsHeightAffinity = PlainsHeightAffinity; P.PlainsAdjust = PlainsAdjust;
-        P.MesoScale = MesoScale; P.MesoAmplitude = MesoAmplitude; P.MesoOctaves = MesoOctaves;
+        P.IceMtnTempAffinity = IceMtnTempAffinity; P.IceMtnHumidAffinity = IceMtnHumidAffinity; P.IceMtnHeightAffinity = IceMtnHeightAffinity; P.IceMtnAdjust = IceMtnAdjust;
+        P.HumidMtnTempAffinity = HumidMtnTempAffinity; P.HumidMtnHumidAffinity = HumidMtnHumidAffinity; P.HumidMtnHeightAffinity = HumidMtnHeightAffinity; P.HumidMtnAdjust = HumidMtnAdjust;
+        P.ClassicMtnTempAffinity = ClassicMtnTempAffinity; P.ClassicMtnHumidAffinity = ClassicMtnHumidAffinity; P.ClassicMtnHeightAffinity = ClassicMtnHeightAffinity; P.ClassicMtnAdjust = ClassicMtnAdjust;
+        P.IceMtnPeakAmplitude = IceMtnPeakAmplitude;
+        P.ClassicMtnLiftAmplitude = ClassicMtnLiftAmplitude;
+        P.HumidMtnHillAmplitude = HumidMtnHillAmplitude; P.HumidMtnHillScale = HumidMtnHillScale;
+		P.MesoScale = MesoScale; P.MesoAmplitude = MesoAmplitude; P.MesoOctaves = MesoOctaves;
         P.MesoPersistence = MesoPersistence; P.MesoLacunarity = MesoLacunarity;
         P.MicroScale = MicroScale; P.MicroAmplitude = MicroAmplitude; P.MicroOctaves = MicroOctaves;
         P.MicroPersistence = MicroPersistence; P.MicroLacunarity = MicroLacunarity;

@@ -2,6 +2,7 @@
 
 #include "AethelgardTerrain/GreedyMeshGenerator.h"
 #include "AethelgardTerrain/BlockRegistry.h"
+#include "AethelgardTerrain/CoordinateUtils.h"
 
 FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
     const FChunkData& CD,
@@ -25,8 +26,7 @@ FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
             {
                 int32 WX = CD.Position.X * CHUNK_SIZE + X;
                 int32 WY = CD.Position.Y * CHUNK_SIZE + Y;
-                FIntPoint NC(FMath::FloorToInt((float)WX / CHUNK_SIZE),
-                              FMath::FloorToInt((float)WY / CHUNK_SIZE));
+                FIntPoint NC = TerrainCoords::BlockToChunk(WX, WY);
                 if (NC == CD.Position)
                 {
                     Chunk = &CD;
@@ -46,7 +46,7 @@ FIntPoint UGreedyMeshGenerator::GetChunkZBounds(
 
             if (H > 0) { MinZ = FMath::Min(MinZ, H); MaxZ = FMath::Max(MaxZ, H); }
 
-            uint8 WL = Chunk->WaterLevel[ColIdx];
+            uint16 WL = Chunk->WaterLevel[ColIdx];
             if (WL > 0) MaxZ = FMath::Max(MaxZ, (int32)WL);
         }
     }
@@ -74,12 +74,14 @@ void UGreedyMeshGenerator::GenerateMesh(
 
     int32 EstimatedQuads = (CHUNK_SIZE * CHUNK_SIZE * (MaxZ - MinZ + 3)) / 4;
 
-    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
-    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
-    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
-    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
-    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
-    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads);
+    FIntPoint ChunkPos = ChunkData.Position;
+
+    ProcessAxis(ChunkData, Neighbors, 0, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads, ChunkPos);
+    ProcessAxis(ChunkData, Neighbors, 0,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads, ChunkPos);
+    ProcessAxis(ChunkData, Neighbors, 1, -1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads, ChunkPos);
+    ProcessAxis(ChunkData, Neighbors, 1,  1, CHUNK_SIZE, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads, ChunkPos);
+    ProcessAxis(ChunkData, Neighbors, 2, -1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads, ChunkPos);
+    ProcessAxis(ChunkData, Neighbors, 2,  1, WORLD_HEIGHT, OutSections, BlockScale, MinZ, MaxZ, EstimatedQuads, ChunkPos);
 }
 
 void UGreedyMeshGenerator::ProcessAxis(
@@ -87,7 +89,8 @@ void UGreedyMeshGenerator::ProcessAxis(
     const TMap<FIntPoint, TSharedPtr<FChunkData>>& NB,
     int32 Axis, int32 Sign, int32 LayerCount,
     TMap<EBlockId, FMeshSectionData>& Out, float Scale,
-    int32 MinZ, int32 MaxZ, int32 EstimatedQuads)
+    int32 MinZ, int32 MaxZ, int32 EstimatedQuads,
+    const FIntPoint& ChunkPos)
 {
     int32 A1 = (Axis + 1) % 3;
     int32 A2 = (Axis + 2) % 3;
@@ -161,7 +164,7 @@ void UGreedyMeshGenerator::ProcessAxis(
                 int32 AdjU = bA1isZ ? (ZOff + U) : U;
                 int32 AdjV = bA2isZ ? (ZOff + V) : V;
                 int32 AdjLayer = bAxisIsZ ? (ZOff + L) : L;
-                AddQuad(Section, Cur, Axis, Sign, AdjLayer, AdjU, AdjV, W, H, Scale);
+                AddQuad(Section, Cur, Axis, Sign, AdjLayer, AdjU, AdjV, W, H, Scale, ChunkPos);
             }
     }
 }
@@ -169,7 +172,8 @@ void UGreedyMeshGenerator::ProcessAxis(
 void UGreedyMeshGenerator::AddQuad(
     FMeshSectionData& Out, EBlockId BlockType,
     int32 Axis, int32 Sign, int32 Layer,
-    int32 U, int32 V, int32 W, int32 H, float Scale)
+    int32 U, int32 V, int32 W, int32 H, float Scale,
+    const FIntPoint& ChunkPos)
 {
     int32 A1 = (Axis + 1) % 3;
     int32 A2 = (Axis + 2) % 3;
@@ -189,6 +193,15 @@ void UGreedyMeshGenerator::AddQuad(
     FProcMeshTangent Tan(1,0,0);
 
     FColor Color = GetBlockColor(BlockType, Axis, Sign);
+
+    constexpr float MaterialNoiseScale = 10.0f;
+    float WorldX, WorldY;
+    if (Axis == 2)      { WorldX = U; WorldY = V; }
+    else if (Axis == 0) { WorldX = Layer; WorldY = U; }
+    else                { WorldX = V; WorldY = Layer; }
+    WorldX += ChunkPos.X * CHUNK_SIZE;
+    WorldY += ChunkPos.Y * CHUNK_SIZE;
+    FVector2D UV(WorldX * MaterialNoiseScale, WorldY * MaterialNoiseScale);
 
     int32 B = Out.Vertices.Num();
     if (Sign > 0)
@@ -210,7 +223,7 @@ void UGreedyMeshGenerator::AddQuad(
     {
         Out.Normals.Add(Norm);
         Out.Colors.Add(Color);
-        Out.UVs.Add(FVector2D(0,0));
+        Out.UVs.Add(UV);
         Out.Tangents.Add(Tan);
     }
 }
@@ -226,7 +239,7 @@ EBlockId UGreedyMeshGenerator::GetBlock(
 
     int32 WX = CD.Position.X * CHUNK_SIZE + X;
     int32 WY = CD.Position.Y * CHUNK_SIZE + Y;
-    FIntPoint NC(FMath::FloorToInt((float)WX / CHUNK_SIZE), FMath::FloorToInt((float)WY / CHUNK_SIZE));
+    FIntPoint NC = TerrainCoords::BlockToChunk(WX, WY);
     if (NC == CD.Position) return CD.GetBlock(X, Y, Z);
 
     const auto* NP = NB.Find(NC);

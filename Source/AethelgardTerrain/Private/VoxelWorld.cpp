@@ -6,6 +6,7 @@
 #include "AethelgardTerrain/GreedyMeshGenerator.h"
 #include "AethelgardTerrain/NetworkSystemComponent.h"
 #include "AethelgardTerrain/SaveSystem.h"
+#include "AethelgardTerrain/CoordinateUtils.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Materials/Material.h"
@@ -181,9 +182,10 @@ void AVoxelWorld::BuildSection(const FIntPoint& C)
                 if (Data.Vertices.Num() == 0) continue;
 
                 int32 SI = static_cast<int32>(BlockType);
+                bool bEnableCollision = !GetBlockDef(BlockType).bIsLiquid;
 
                 Mesh->CreateMeshSection(SI, Data.Vertices, Data.Triangles,
-                    Data.Normals, Data.UVs, Data.Colors, Data.Tangents, true);
+                    Data.Normals, Data.UVs, Data.Colors, Data.Tangents, bEnableCollision);
 
                 UMaterialInterface** MatPtr = BlockMaterials.Find(BlockType);
                 UMaterialInterface* Mat = MatPtr ? *MatPtr : DefaultMaterial;
@@ -215,8 +217,8 @@ void AVoxelWorld::TickFollowPlayer()
     {
         Pos = GetActorLocation();
     }
-    FIntPoint BC((int32)(Pos.X / BlockScale), (int32)(Pos.Y / BlockScale));
-    UE_LOG(LogTemp, Warning, TEXT("[VoxelWorld] TickFollowPlayer: BC=(%d,%d) Chunks=%d GenQueue=%d MeshQueue=%d"),
+	FIntPoint BC = TerrainCoords::WorldToBlock(Pos, BlockScale);
+	UE_LOG(LogTemp, Warning, TEXT("[VoxelWorld] TickFollowPlayer: BC=(%d,%d) Chunks=%d GenQueue=%d MeshQueue=%d"),
         BC.X, BC.Y,
         ChunkManager->GetChunkCount(),
         ChunkManager->GetGenQueueNum(),
@@ -226,12 +228,18 @@ void AVoxelWorld::TickFollowPlayer()
 
 EBlockId AVoxelWorld::GetBlock(int32 WX, int32 WY, int32 WZ) const
 {
-    return ChunkManager->GetBlock((int32)(WX / BlockScale), (int32)(WY / BlockScale), (int32)(WZ / BlockScale));
+	return ChunkManager->GetBlock(
+		TerrainCoords::FloorDiv(WX, (int32)BlockScale),
+		TerrainCoords::FloorDiv(WY, (int32)BlockScale),
+		TerrainCoords::FloorDiv(WZ, (int32)BlockScale));
 }
 
 bool AVoxelWorld::SetBlock(int32 WX, int32 WY, int32 WZ, EBlockId B)
 {
-    return ChunkManager->SetBlock((int32)(WX / BlockScale), (int32)(WY / BlockScale), (int32)(WZ / BlockScale), B);
+	return ChunkManager->SetBlock(
+		TerrainCoords::FloorDiv(WX, (int32)BlockScale),
+		TerrainCoords::FloorDiv(WY, (int32)BlockScale),
+		TerrainCoords::FloorDiv(WZ, (int32)BlockScale), B);
 }
 
 void AVoxelWorld::SaveWorld(const FString& Slot, const TArray<FInventorySlotSaveData>& Inventory)

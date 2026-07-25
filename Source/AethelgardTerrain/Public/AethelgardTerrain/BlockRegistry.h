@@ -17,9 +17,10 @@ enum class EBlockId : uint8
     Wood,
     Leaves,
     Clay,
-    Snow,
-    Ice,
-    MAX UMETA(Hidden)
+	Snow,
+	Ice,
+	LushGrass,
+	MAX UMETA(Hidden)
 };
 
 struct FBlockDefinition
@@ -46,7 +47,8 @@ inline const FBlockDefinition& GetBlockDef(EBlockId Id)
         { TEXT("Leaves"),  TEXT("/Game/Materials/Environment/M_Leaves"),  0.2f, 0.2f, true,  false },
         { TEXT("Clay"),    TEXT("/Game/Materials/Environment/M_Clay"),    0.5f, 1.0f, false, false },
         { TEXT("Snow"),    TEXT("/Game/Materials/Environment/M_Snow"),    0.3f, 0.3f, false, false },
-        { TEXT("Ice"),     TEXT("/Game/Materials/Environment/M_Ice"),     0.8f, 1.0f, true,  false },
+	{ TEXT("Ice"),     TEXT("/Game/Materials/Environment/M_Ice"),     0.8f, 1.0f, true,  false },
+	{ TEXT("LushGrass"),    TEXT("/Game/Materials/Environment/M_Grass"), 0.6f, 0.6f, false, false },
     };
     return Definitions[static_cast<int32>(Id)];
 }
@@ -67,7 +69,8 @@ inline FColor GetBlockColor(EBlockId BlockId, int32 FaceAxis = 2, int32 FaceDire
     case EBlockId::Leaves: return FColor(34, 120, 34);
     case EBlockId::Clay:   return FColor(160, 82, 45);
     case EBlockId::Snow:   return FColor(240, 240, 240);
-    case EBlockId::Ice:    return FColor(180, 210, 240);
+	case EBlockId::Ice:    return FColor(180, 210, 240);
+	case EBlockId::LushGrass:    return FColor(20, 180, 20);
     default:               return FColor::Magenta;
     }
 }
